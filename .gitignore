@@ -1,0 +1,6 @@
+# Compiled source #
+###################
+.dep
+build/
+*.o
+*.so
