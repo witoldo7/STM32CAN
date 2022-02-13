@@ -138,7 +138,7 @@ static THD_FUNCTION(can_rx, p) {
 			packetbuff[1] = (rxmsg.SID >> 8) & 0xFF;
 			packetbuff[2] = (rxmsg.SID >> 16) & 0xFF;
 			packetbuff[3] = (rxmsg.SID >> 24) & 0xFF;
-			packetbuff[12] = rxmsg.SID;
+			packetbuff[12] = rxmsg.DLC;
 			memcpy(packetbuff + 4, rxmsg.data8, rxmsg.DLC);
 			size = CombiSendPacket(&tx_packet, buffer);
 			usb_send(&USBD1, EP_IN, buffer, size);
