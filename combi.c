@@ -1,25 +1,3 @@
-/*
- Copyright (c) 2021 Witold Olechowski
-
- Permission is hereby granted, free of charge, to any person obtaining a copy
- of this software and associated documentation files (the "Software"), to deal
- in the Software without restriction, including without limitation the rights
- to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- copies of the Software, and to permit persons to whom the Software is
- furnished to do so, subject to the following conditions:
-
- The above copyright notice and this permission notice shall be included in all
- copies or substantial portions of the Software.
-
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- SOFTWARE.
- */
-
 #include "hal.h"
 #include <stdio.h>
 #include "combi.h"
@@ -51,30 +29,70 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
   switch (rx_packet->cmd_code) {
   case cmd_can_ecuconnect:
     return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+  case cmd_can_filter:
+    if (rx_packet->data_len != 0 && rx_packet->data_len <= 8) {
+      if (*rx_packet->data == 0x0) {
+        return false;
+      }
+      CANFilter filter[2] = {{1, 1, 0, 0, 0, 0}, {2, 1, 0, 0, 0, 0}};
+      uint8_t filters_number = rx_packet->data[0];
+      uint8_t j = 0, id, id1, id2, id3;
+      for (uint8_t i = 0; i < filters_number; i = i + 4, j++) {
+        switch (filters_number - i) {
+        case 1:
+          id = (uint16_t)rx_packet->data[1 + i] | (uint16_t)(rx_packet->data[2 + i] << 8);
+          filter[j].register1 = (id << 5) | 0b010;
+          filter[j].register2 = 0;
+          break;
+        case 2:
+          id = (uint16_t)rx_packet->data[1 + i] | (uint16_t)(rx_packet->data[2 + i] << 8);
+          id1 = (uint16_t)rx_packet->data[3 + i] | (uint16_t)(rx_packet->data[4 + i] << 8);
+          filter[j].register1 = (((id << 5) | 0b010) << 16) | ((id1 << 5) | 0b010);
+          filter[j].register2 = 0;
+          break;
+        case 3:
+          id = (uint16_t)rx_packet->data[1 + i] | (uint16_t)(rx_packet->data[2 + i] << 8);
+          id1 = (uint16_t)rx_packet->data[3 + i] | (uint16_t)(rx_packet->data[4 + i] << 8);
+          id2 = (uint16_t)rx_packet->data[5 + i] | (uint16_t)(rx_packet->data[6 + i] << 8);
+          filter[j].register1 = (((id << 5) | 0b010) << 16) | ((id1 << 5) | 0b010);
+          filter[j].register2 = ((id2 << 5) | 0b010);
+          break;
+        case 4:
+          id = (uint16_t)rx_packet->data[1 + i] | (uint16_t)(rx_packet->data[2 + i] << 8);
+          id1 = (uint16_t)rx_packet->data[3 + i] | (uint16_t)(rx_packet->data[4 + i] << 8);
+          id2 = (uint16_t)rx_packet->data[5 + i] | (uint16_t)(rx_packet->data[6 + i] << 8);
+          id3 = (uint16_t)rx_packet->data[7 + i] | (uint16_t)(rx_packet->data[8 + i] << 8);
+          filter[j].register1 = (((id << 5) | 0b010) << 16) | ((id1 << 5) | 0b010);
+          filter[j].register2 = (((id2 << 5) | 0b010) << 16) | ((id3 << 5) | 0b010);
+          break;
+        }
+      }
+      canSTM32SetFilters(&CAND1, 0xE, j, &filter[0]);
+      rccEnableCAN1(true);
+    }
+    return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
   case cmd_can_open:
     if (rx_packet->data_len == 1) {
       if (*rx_packet->data != 0x1) {
-        //canStop(&CAND1);
+        rccDisableCAN1();
         return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
       }
-      //startcan
+      rccEnableCAN1(true);
       return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
     }
     break;
   case cmd_can_bitrate:
     if (rx_packet->data_len == 4) {
-      uint32_t bitrate = rx_packet->data[3] | (uint32_t)*rx_packet->data << 0x18
+      uint32_t bitrate = rx_packet->data[3]
+          | (uint32_t)*rx_packet->data << 0x18
           | (uint32_t)rx_packet->data[1] << 0x10
           | (uint32_t)rx_packet->data[2] << 8;
       switch (bitrate) {
-      case 615000:
-        set_can_bitrate(CAN_500KBPS);
-        break;
       case 500000:
         set_can_bitrate(CAN_500KBPS);
         break;
       case 47619:
-        set_can_bitrate(CAN_500KBPS);
+        set_can_bitrate(CAN_47KBPS);
         break;
       default:
         return false;
@@ -93,8 +111,7 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
     txmsg.DLC = rx_packet->data[12];
     memcpy(txmsg.data8, rx_packet->data + 4, rx_packet->data[12]);
 
-    return (canTransmit(&CAND1, CAN_ANY_MAILBOX, &txmsg, TIME_MS2I(100))
-        == MSG_OK )
+    return (canTransmit(&CAND1, CAN_ANY_MAILBOX, &txmsg, TIME_MS2I(100)) == MSG_OK )
         && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
   }
   return false;
