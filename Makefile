@@ -115,7 +115,7 @@ LDSCRIPT= $(STARTUPLD)/STM32F407xG.ld
 CSRC = $(ALLCSRC) \
        $(BOARDSRC) \
        $(TESTSRC) \
-       usbcfg.c combi.c main.c
+       usbcombi.c combi.c main.c
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.

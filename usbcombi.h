@@ -11,6 +11,9 @@
 #define EP_IN 2
 #define EP_OUT 2
 
+extern uint8_t receiveBuf[OUT_PACKETSIZE];
+extern uint8_t transferBuf[IN_PACKETSIZE];
+
 /*
  * USB Device Descriptor.
  */
@@ -187,7 +190,9 @@ static const USBDescriptor vcom_strings[] = {
 
 extern const USBConfig usb_config;
 extern bool is_ready(void);
-extern void dataTransmitted(USBDriver *usbp, usbep_t ep);
 extern void dataReceived(USBDriver *usbp, usbep_t ep);
+extern void usb_send(USBDriver *usbp, usbep_t ep, const uint8_t *buf, size_t n);
+extern bool start_receive(USBDriver *usbp, usbep_t ep, uint8_t *buf, size_t n);
+
 
 #endif

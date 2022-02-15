@@ -1,9 +1,12 @@
+#include "usbcombi.h"
+
 #include "hal.h"
-#include "usbcfg.h"
 
 bool isReady = false;
 
 static USBInEndpointState ep1instate;
+volatile bool is_transmiting = false;
+void dataTransmitted(USBDriver *usbp, usbep_t ep);
 
 static const USBEndpointConfig ep1config = {
 USB_EP_MODE_TYPE_INTR,
@@ -99,6 +102,41 @@ static bool requests_hook(USBDriver *usbp) {
 
 const USBConfig usb_config = {usb_event, get_descriptor, requests_hook,
 NULL};
+
+/*
+ * data Transmitted Callback
+ */
+void dataTransmitted(USBDriver *usbp, usbep_t ep) {
+  (void)usbp;
+  (void)ep;
+  is_transmiting = false;
+}
+
+void usb_send(USBDriver *usbp, usbep_t ep, const uint8_t *buf, size_t n) {
+  while (is_transmiting) {
+    chThdSleepMicroseconds(1);
+  }
+  is_transmiting = true;
+  osalSysLock();
+  usbStartTransmitI(usbp, ep, buf, n);
+  osalSysUnlock();
+}
+
+bool start_receive(USBDriver *usbp, usbep_t ep, uint8_t *buf, size_t n) {
+  if (usbGetDriverStateI(usbp) != USB_ACTIVE) {
+    return true;
+  }
+
+  if (usbGetReceiveStatusI(usbp, ep)) {
+    return true;
+  }
+
+  chSysLock();
+  usbStartReceiveI(usbp, ep, buf, n);
+  chSysUnlock();
+
+  return false;
+}
 
 bool is_ready(void) {
   return isReady;

@@ -5,7 +5,7 @@
 #include "ch.h"
 #include "hal.h"
 #include "combi.h"
-#include "usbcfg.h"
+#include "usbcombi.h"
 
 static semaphore_t rxSem;
 static semaphore_t processSem;
@@ -13,7 +13,6 @@ uint8_t receiveBuf[OUT_PACKETSIZE];
 uint8_t transferBuf[IN_PACKETSIZE];
 packet_t rx_packet = {};
 packet_t tx_packet = {};
-volatile bool is_transmiting = false;
 
 /*
  * 500KBaud, automatic wakeup, automatic recover
@@ -24,41 +23,6 @@ static const CANConfig cancfg = {CAN_MCR_ABOM | CAN_MCR_AWUM | CAN_MCR_TXFP, CAN
                                      | CAN_BTR_TS1(8) | CAN_BTR_BRP(6)};
 CANFilter trionic8_filter[1] = { {1, 1, 0, 0, (((0x7E0 << 5) | 0b010) << 16) | ((0x7E8 << 5) | 0b010),
                                   (((0x5E8 << 5) | 0b010) << 16) | ((0 << 5) | 0b010)}};
-
-void usb_send(USBDriver *usbp, usbep_t ep, const uint8_t *buf, size_t n) {
-  while (is_transmiting) {
-    chThdSleepMicroseconds(1);
-  }
-  is_transmiting = true;
-  osalSysLock();
-  usbStartTransmitI(usbp, ep, buf, n);
-  osalSysUnlock();
-}
-
-static bool start_receive(USBDriver *usbp, usbep_t ep, uint8_t *buf, size_t n) {
-  if (usbGetDriverStateI(usbp) != USB_ACTIVE) {
-    return true;
-  }
-
-  if (usbGetReceiveStatusI(usbp, ep)) {
-    return true;
-  }
-
-  chSysLock();
-  usbStartReceiveI(usbp, ep, buf, n);
-  chSysUnlock();
-
-  return false;
-}
-
-/*
- * data Transmitted Callback
- */
-void dataTransmitted(USBDriver *usbp, usbep_t ep) {
-  (void)usbp;
-  (void)ep;
-  is_transmiting = false;
-}
 
 /*
  * data Received Callback

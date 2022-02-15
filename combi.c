@@ -2,7 +2,8 @@
 #include <stdio.h>
 #include "combi.h"
 #include "string.h"
-#include "usbcfg.h"
+
+#include "usbcombi.h"
 
 CAN_bit_timing_config_t can_configs[8] = { {2, 11, 63}, {2, 12, 56},
                                           {2, 12, 28}, {2, 13, 21}, {2, 11, 12},
