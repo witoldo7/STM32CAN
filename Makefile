@@ -107,6 +107,7 @@ include $(CHIBIOS)/test/oslib/oslib_test.mk
 include $(CHIBIOS)/os/hal/lib/streams/streams.mk
 include $(CHIBIOS)/os/various/shell/shell.mk
 
+include ./bdm/bdm.mk
 # Define linker script file here
 LDSCRIPT= $(STARTUPLD)/STM32F407xG.ld
 
@@ -114,6 +115,7 @@ LDSCRIPT= $(STARTUPLD)/STM32F407xG.ld
 # setting.
 CSRC = $(ALLCSRC) \
        $(BOARDSRC) \
+       $(BDMSRC) \
        $(TESTSRC) \
        usbcombi.c combi.c main.c
 
@@ -145,7 +147,7 @@ TCPPSRC =
 ASMSRC = $(ALLASMSRC)
 ASMXSRC = $(ALLXASMSRC)
 
-INCDIR = $(ALLINC) $(BOARDINC) $(TESTINC)
+INCDIR = $(ALLINC) $(BOARDINC) $(BDMINC) $(TESTINC)
 
 #
 # Project, sources and paths
