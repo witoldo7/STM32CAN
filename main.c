@@ -35,26 +35,61 @@ void dataReceived(USBDriver *usbp, usbep_t ep) {
   chSysUnlockFromISR();
 }
 
-static THD_WORKING_AREA(usb_rx_wa, 2048);
+static THD_WORKING_AREA(usb_rx_wa, 4096);
 static THD_FUNCTION(usb_rx, arg) {
   (void)arg;
-  uint8_t buff[16] = {0};
+  uint8_t buff[300] = {0};
   rx_packet.data = buff;
   chRegSetThreadName("usbReceiver");
+  bool is_completed = true;
+  uint16_t cur_pos = 0;
+  uint16_t len = 0;
   while (TRUE) {
     chSemWait(&rxSem);
     if (!(((USBDriver*)&USBD1)->state == USB_ACTIVE)) {
       continue;
     }
-    if (*(receiveBuf) != 0) {
+    if (*(receiveBuf) == 0) {
+      start_receive(&USBD1, EP_OUT, receiveBuf, IN_PACKETSIZE);
+      continue;
+    }
+    uint8_t rec_size = ((USBDriver*)&USBD1)->epc[EP_OUT]->out_state->rxcnt;
+    if (is_completed) {
       rx_packet.cmd_code = receiveBuf[0];
-      uint16_t len = (uint16_t)((receiveBuf[1] & 0xffffU) << 8) | (uint16_t)receiveBuf[2];
+      len = (uint16_t)((receiveBuf[1] & 0xffffU) << 8) | (uint16_t)receiveBuf[2];
+      if (len > 255) {
+        continue;
+      }
       rx_packet.data_len = len;
-      memcpy(rx_packet.data, receiveBuf + 3, len);
-      rx_packet.term = receiveBuf[len + 3];
-      osalSysLock();
-      chSemSignalI(&processSem);
-      osalSysUnlock();
+      memcpy(rx_packet.data, receiveBuf + 3, rec_size);
+      cur_pos += rec_size;
+      if ((len + 3) > cur_pos) {
+        is_completed = false;
+      } else {
+        rx_packet.term = receiveBuf[rec_size-1];
+        osalSysLock();
+        chSemSignalI(&processSem);
+        osalSysUnlock();
+        cur_pos = 0;
+        len = 0;
+        is_completed = true;
+        memset(receiveBuf, 0, OUT_PACKETSIZE);
+      }
+    } else {
+      if ((cur_pos + rec_size) >= len + 3) {
+        memcpy(rx_packet.data + cur_pos, receiveBuf, rec_size - 1);
+        rx_packet.term = receiveBuf[rec_size-1];
+        osalSysLock();
+        chSemSignalI(&processSem);
+        osalSysUnlock();
+        cur_pos = 0;
+        len = 0;
+        is_completed = true;
+        memset(receiveBuf, 0, OUT_PACKETSIZE);
+      } else {
+        memcpy(rx_packet.data + cur_pos, receiveBuf, rec_size);
+        cur_pos += rec_size;
+      }
     }
     start_receive(&USBD1, EP_OUT, receiveBuf, IN_PACKETSIZE);
   }
