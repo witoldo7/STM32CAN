@@ -46,14 +46,14 @@ static THD_FUNCTION(usb_rx, arg) {
   uint16_t len = 0;
   while (TRUE) {
     chSemWait(&rxSem);
-    if (!(((USBDriver*)&USBD1)->state == USB_ACTIVE)) {
+    if (!(((USBDriver*)&USBD2)->state == USB_ACTIVE)) {
       continue;
     }
     if (*(receiveBuf) == 0) {
-      start_receive(&USBD1, EP_OUT, receiveBuf, IN_PACKETSIZE);
+      start_receive(&USBD2, EP_OUT, receiveBuf, IN_PACKETSIZE);
       continue;
     }
-    uint8_t rec_size = ((USBDriver*)&USBD1)->epc[EP_OUT]->out_state->rxcnt;
+    uint8_t rec_size = ((USBDriver*)&USBD2)->epc[EP_OUT]->out_state->rxcnt;
     if (is_completed) {
       rx_packet.cmd_code = receiveBuf[0];
       len = (uint16_t)((receiveBuf[1] & 0xffffU) << 8) | (uint16_t)receiveBuf[2];
@@ -91,7 +91,7 @@ static THD_FUNCTION(usb_rx, arg) {
         cur_pos += rec_size;
       }
     }
-    start_receive(&USBD1, EP_OUT, receiveBuf, IN_PACKETSIZE);
+    start_receive(&USBD2, EP_OUT, receiveBuf, IN_PACKETSIZE);
   }
 }
 
@@ -122,7 +122,7 @@ static THD_FUNCTION(combi, arg) {
       }
 
       size = CombiSendPacket(&tx_packet, transferBuf);
-      usb_send(&USBD1, EP_IN, transferBuf, size);
+      usb_send(&USBD2, EP_IN, transferBuf, size);
     }
   }
 }
@@ -150,7 +150,7 @@ static THD_FUNCTION(can_rx, p) {
       packetbuff[12] = rxmsg.DLC;
       memcpy(packetbuff + 4, rxmsg.data8, rxmsg.DLC);
       size = CombiSendPacket(&tx_packet, buffer);
-      usb_send(&USBD1, EP_IN, buffer, size);
+      usb_send(&USBD2, EP_IN, buffer, size);
     }
   }
   chEvtUnregister(&CAND1.rxfull_event, &el);
@@ -165,10 +165,10 @@ int main(void) {
   canSTM32SetFilters(&CAND1, 0xE, 1, &trionic8_filter[0]);
   canStart(&CAND1, &cancfg);
 
-  usbDisconnectBus(&USBD1);
+  usbDisconnectBus(&USBD2);
   chThdSleepMilliseconds(100);
-  usbStart(&USBD1, &usb_config);
-  usbConnectBus(&USBD1);
+  usbStart(&USBD2, &usb_config);
+  usbConnectBus(&USBD2);
 
   chThdCreateStatic(usb_rx_wa, sizeof(usb_rx_wa), NORMALPRIO + 7, usb_rx, NULL);
   chThdCreateStatic(combi_wa, sizeof(combi_wa), NORMALPRIO + 7, combi, NULL);
@@ -181,7 +181,7 @@ int main(void) {
       chThdSleepMilliseconds(100);
     }
     chThdSleepMilliseconds(100);
-    start_receive(&USBD1, EP_OUT, receiveBuf, IN_PACKETSIZE);
+    start_receive(&USBD2, EP_OUT, receiveBuf, IN_PACKETSIZE);
     //usbinit = true;
   }
 }

@@ -349,7 +349,7 @@ bool readflash(LONG start_addr, LONG size) {
     curr_addr = curr_addr + 2;
     if (((curr_addr - start_addr) & 0xff) == 0) {
       buffsize = CombiSendPacket(&tx_packet, buffer);
-      usb_send(&USBD1, EP_IN, buffer, buffsize);
+      usb_send(&USBD2, EP_IN, buffer, buffsize);
       buf_ptr = (WORD*)flash_buf;
     }
   }
@@ -396,7 +396,7 @@ bool writeflash(char *flash_type, LONG start_addr, LONG size) {
   tx_packet.data = (BYTE*)0x0;
   tx_packet.term = cmd_term_ack;
   buffsize = CombiSendPacket(&tx_packet, buffer);
-  usb_send(&USBD1, EP_IN, buffer, buffsize);
+  usb_send(&USBD2, EP_IN, buffer, buffsize);
 
   rx_packet.data = flash_buf;
   bytes_written = 0;
@@ -427,7 +427,7 @@ bool writeflash(char *flash_type, LONG start_addr, LONG size) {
     }
     bytes_written = bytes_written + 0x100;
     buffsize = CombiSendPacket(&tx_packet, buffer);
-    usb_send(&USBD1, EP_IN, buffer, buffsize);
+    usb_send(&USBD2, EP_IN, buffer, buffsize);
   } while (status == true);
 
   // reset flash
