@@ -4,10 +4,10 @@
 #include "string.h"
 
 #include "usbcombi.h"
-
-CAN_bit_timing_config_t can_configs[8] = { {2, 11, 63}, {2, 12, 56},
+CAN_bit_timing_config_t can_configs[9] = {{5, 15, 60}, {2, 11, 63}, {2, 12, 56},
                                           {2, 12, 28}, {2, 13, 21}, {2, 11, 12},
                                           {2, 11, 6}, {2, 11, 5}, {1, 5, 6}};
+
 uint8_t version[2] = {0x03, 0x01};
 uint8_t egt_temp[5] = {0};
 CANTxFrame txmsg = {.IDE = CAN_IDE_STD, .RTR = CAN_RTR_DATA};
@@ -24,6 +24,35 @@ bool exec_cmd_bdm(packet_t *rx_packet, packet_t *tx_packet) {
   (void)rx_packet;
   (void)tx_packet;
   return true;
+}
+
+bool exec_cmd_swcan(packet_t *rx_packet, packet_t *tx_packet) {
+  switch (rx_packet->cmd_code) {
+  case cmd_swcan_open:
+    if (rx_packet->data_len == 1) {
+      if (*rx_packet->data != 0x1) {
+        rccDisableCAN2();
+        return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+      }
+      rccEnableCAN2(true);
+      return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+    }
+    break;
+  case cmd_can_txframe:
+    if (rx_packet->data_len != 15) {
+      return false;
+    }
+    txmsg.SID = (uint32_t)rx_packet->data[0]
+        | (uint32_t)(rx_packet->data[1] << 8)
+        | (uint32_t)(rx_packet->data[2] << 16)
+        | (uint32_t)(rx_packet->data[3] << 24);
+    txmsg.DLC = rx_packet->data[12];
+    memcpy(txmsg.data8, rx_packet->data + 4, rx_packet->data[12]);
+
+    return (canTransmit(&CAND2, CAN_ANY_MAILBOX, &txmsg, TIME_MS2I(100)) == MSG_OK )
+        && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+  }
+  return false;
 }
 
 bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
