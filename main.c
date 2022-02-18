@@ -15,12 +15,16 @@ packet_t rx_packet = {};
 packet_t tx_packet = {};
 
 /*
- * 500KBaud, automatic wakeup, automatic recover
- * from abort mode.
- * See section 22.7.7 on the STM32 reference manual.
+ * 500KBaud, automatic wakeup, automatic recover from abort mode.
  */
 static const CANConfig cancfg = {CAN_MCR_ABOM | CAN_MCR_AWUM | CAN_MCR_TXFP, CAN_BTR_SJW(0) | CAN_BTR_TS2(1)
                                      | CAN_BTR_TS1(8) | CAN_BTR_BRP(6)};
+/*
+ * 33.333KBaud, automatic wakeup, automatic recover from abort mode.
+ */
+static const CANConfig swcancfg = {CAN_MCR_ABOM | CAN_MCR_AWUM | CAN_MCR_TXFP, CAN_BTR_SJW(0) | CAN_BTR_TS2(1)
+                                     | CAN_BTR_TS1(8) | CAN_BTR_BRP(105)};
+
 CANFilter trionic8_filter[1] = { {1, 1, 0, 0, (((0x7E0 << 5) | 0b010) << 16) | ((0x7E8 << 5) | 0b010),
                                   (((0x5E8 << 5) | 0b010) << 16) | ((0 << 5) | 0b010)}};
 
@@ -111,6 +115,9 @@ static THD_FUNCTION(combi, arg) {
       case 0x40: //BDM utility.
         ret = exec_cmd_bdm(&rx_packet, &tx_packet);
         break;
+      case 0x60: //SWCAN utility.
+        ret = exec_cmd_swcan(&rx_packet, &tx_packet);
+        break;
       case 0x80:  //CAN utility.
         ret = exec_cmd_can(&rx_packet, &tx_packet);
         break;
@@ -156,6 +163,35 @@ static THD_FUNCTION(can_rx, p) {
   chEvtUnregister(&CAND1.rxfull_event, &el);
 }
 
+static THD_WORKING_AREA(swcan_rx_wa, 4096);
+static THD_FUNCTION(swcan_rx, p) {
+  (void)p;
+  event_listener_t el;
+  CANRxFrame rxmsg = {};
+  uint8_t size = 0;
+  uint8_t buffer[IN_PACKETSIZE] = {0};
+  uint8_t packetbuff[16] = {0};
+  packet_t tx_packet = {.data = packetbuff, .cmd_code = cmd_swcan_frame, .data_len = 15};
+  chRegSetThreadName("swcan receiver");
+  chEvtRegister(&CAND2.rxfull_event, &el, 0);
+  while (true) {
+    if (chEvtWaitAnyTimeout(ALL_EVENTS, TIME_MS2I(100)) == 0) {
+      continue;
+    }
+    while (canReceive(&CAND2, CAN_ANY_MAILBOX, &rxmsg, TIME_IMMEDIATE) == MSG_OK ) {
+      packetbuff[0] = rxmsg.SID & 0xFF;
+      packetbuff[1] = (rxmsg.SID >> 8) & 0xFF;
+      packetbuff[2] = (rxmsg.SID >> 16) & 0xFF;
+      packetbuff[3] = (rxmsg.SID >> 24) & 0xFF;
+      packetbuff[12] = rxmsg.DLC;
+      memcpy(packetbuff + 4, rxmsg.data8, rxmsg.DLC);
+      size = CombiSendPacket(&tx_packet, buffer);
+      usb_send(&USBD1, EP_IN, buffer, size);
+    }
+  }
+  chEvtUnregister(&CAND2.rxfull_event, &el);
+}
+
 int main(void) {
   halInit();
   chSysInit();
@@ -164,6 +200,10 @@ int main(void) {
 
   canSTM32SetFilters(&CAND1, 0xE, 1, &trionic8_filter[0]);
   canStart(&CAND1, &cancfg);
+  canStart(&CAND2, &swcancfg);
+  //temporary disable, lets remote activate it
+  rccDisableCAN1();
+  rccDisableCAN2();
 
   usbDisconnectBus(&USBD1);
   chThdSleepMilliseconds(100);
@@ -173,6 +213,7 @@ int main(void) {
   chThdCreateStatic(usb_rx_wa, sizeof(usb_rx_wa), NORMALPRIO + 7, usb_rx, NULL);
   chThdCreateStatic(combi_wa, sizeof(combi_wa), NORMALPRIO + 7, combi, NULL);
   chThdCreateStatic(can_rx_wa, sizeof(can_rx_wa), NORMALPRIO + 20, can_rx, NULL);
+  chThdCreateStatic(swcan_rx_wa, sizeof(swcan_rx_wa), NORMALPRIO + 7, swcan_rx, NULL);
 
   bool usbinit = false; //fixme
   while (TRUE) {

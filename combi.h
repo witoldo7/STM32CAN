@@ -25,6 +25,11 @@ enum combi_command_t {
   cmd_bdm_erase_flash = 0x4C,
   cmd_bdm_write_flash = 0x4D,
   cmd_bdm_pinstate = 0x4E,
+  cmd_swcan_open = 0x60,
+  cmd_swcan_bitrate = 0x61,
+  cmd_swcan_frame = 0x62,
+  cmd_swcan_txframe = 0x63,
+  cmd_swcan_filter = 0x64,
   cmd_can_open = 0x80,
   cmd_can_bitrate = 0x81,
   cmd_can_frame = 0x82,
@@ -45,6 +50,7 @@ struct packet_t {
 };
 
 typedef enum {
+  CAN_33KBPS,
   CAN_47KBPS,
   CAN_50KBPS,
   CAN_100KBPS,
@@ -54,12 +60,13 @@ typedef enum {
   CAN_600KBPS,
   CAN_1000KBPS
 } BITRATE;
-//typedef enum {CAN_50KBPS, CAN_100KBPS, CAN_125KBPS, CAN_250KBPS, CAN_500KBPS, CAN_1000KBPS} BITRATE;
+
 typedef const struct {
   uint8_t TS2;
   uint8_t TS1;
   uint8_t BRP;
 } CAN_bit_timing_config_t;
+
 
 extern bool CombiSendReplyPacket(packet_t *reply, packet_t *source,
                                  uint8_t *data, uint16_t data_len,
@@ -67,6 +74,7 @@ extern bool CombiSendReplyPacket(packet_t *reply, packet_t *source,
 extern uint8_t CombiSendPacket(packet_t *packet, uint8_t *buffer);
 extern bool exec_cmd_board(packet_t *rx_packet, packet_t *tx_packet);
 extern bool exec_cmd_bdm(packet_t *rx_packet, packet_t *tx_packet);
+extern bool exec_cmd_swcan(packet_t *rx_packet, packet_t *tx_packet);
 extern bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet);
 
 #endif

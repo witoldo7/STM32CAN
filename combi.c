@@ -4,13 +4,57 @@
 #include "string.h"
 
 #include "usbcombi.h"
-
-CAN_bit_timing_config_t can_configs[8] = { {2, 11, 63}, {2, 12, 56},
+CAN_bit_timing_config_t can_configs[9] = {{5, 15, 60}, {2, 11, 63}, {2, 12, 56},
                                           {2, 12, 28}, {2, 13, 21}, {2, 11, 12},
                                           {2, 11, 6}, {2, 11, 5}, {1, 5, 6}};
+
 uint8_t version[2] = {0x03, 0x01};
 uint8_t egt_temp[5] = {0};
 CANTxFrame txmsg = {.IDE = CAN_IDE_STD, .RTR = CAN_RTR_DATA};
+
+CANFilter filter[28] = {};
+
+void set_can_filter(CANDriver *can, uint8_t* data) {
+  uint8_t j = 0, id, id1, id2, id3;
+  if (can == &CAND2) {
+    j += 0xE;
+  }
+  for (uint8_t i = 0; i < data[0]; i = i + 4, j++) {
+    filter[j].filter = j;
+    filter[j].mode = 1;
+    filter[j].scale = 0;
+    filter[j].assignment = 0;
+    switch (data[0] - i) {
+    case 1:
+      id = (uint16_t)data[1 + i] | (uint16_t)(data[2 + i] << 8);
+      filter[j].register1 = (id << 5) | 0b010;
+      filter[j].register2 = 0;
+      break;
+    case 2:
+      id = (uint16_t)data[1 + i] | (uint16_t)(data[2 + i] << 8);
+      id1 = (uint16_t)data[3 + i] | (uint16_t)(data[4 + i] << 8);
+      filter[j].register1 = (((id << 5) | 0b010) << 16) | ((id1 << 5) | 0b010);
+      filter[j].register2 = 0;
+      break;
+    case 3:
+      id = (uint16_t)data[1 + i] | (uint16_t)(data[2 + i] << 8);
+      id1 = (uint16_t)data[3 + i] | (uint16_t)(data[4 + i] << 8);
+      id2 = (uint16_t)data[5 + i] | (uint16_t)(data[6 + i] << 8);
+      filter[j].register1 = (((id << 5) | 0b010) << 16) | ((id1 << 5) | 0b010);
+      filter[j].register2 = ((id2 << 5) | 0b010);
+      break;
+    case 4:
+      id = (uint16_t)data[1 + i] | (uint16_t)(data[2 + i] << 8);
+      id1 = (uint16_t)data[3 + i] | (uint16_t)(data[4 + i] << 8);
+      id2 = (uint16_t)data[5 + i] | (uint16_t)(data[6 + i] << 8);
+      id3 = (uint16_t)data[7 + i] | (uint16_t)(data[8 + i] << 8);
+      filter[j].register1 = (((id << 5) | 0b010) << 16) | ((id1 << 5) | 0b010);
+      filter[j].register2 = (((id2 << 5) | 0b010) << 16) | ((id3 << 5) | 0b010);
+      break;
+    }
+  }
+  canSTM32SetFilters(can, 0xE, j, &filter[0]);
+}
 
 bool set_can_bitrate(BITRATE bitrate) {
   CAN1->BTR &= ~(((0x03) << 24) | ((0x07) << 20) | ((0x0F) << 16) | (0x1FF));
@@ -26,6 +70,41 @@ bool exec_cmd_bdm(packet_t *rx_packet, packet_t *tx_packet) {
   return true;
 }
 
+bool exec_cmd_swcan(packet_t *rx_packet, packet_t *tx_packet) {
+  switch (rx_packet->cmd_code) {
+  case cmd_swcan_open:
+    if (rx_packet->data_len == 1) {
+      if (*rx_packet->data != 0x1) {
+        rccDisableCAN2();
+        return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+      }
+      rccEnableCAN2(true);
+      return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+    }
+    break;
+  case cmd_swcan_txframe:
+    if (rx_packet->data_len != 15) {
+      return false;
+    }
+    txmsg.SID = (uint32_t)rx_packet->data[0]
+        | (uint32_t)(rx_packet->data[1] << 8)
+        | (uint32_t)(rx_packet->data[2] << 16)
+        | (uint32_t)(rx_packet->data[3] << 24);
+    txmsg.DLC = rx_packet->data[12];
+    memcpy(txmsg.data8, rx_packet->data + 4, rx_packet->data[12]);
+
+    return (canTransmit(&CAND2, CAN_ANY_MAILBOX, &txmsg, TIME_MS2I(100)) == MSG_OK )
+        && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+  case cmd_swcan_filter:
+    if (*rx_packet->data == 0x0) {
+      return false;
+    }
+    set_can_filter(&CAND2, rx_packet->data);
+    rccEnableCAN2(true);
+  }
+  return false;
+}
+
 bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
   switch (rx_packet->cmd_code) {
   case cmd_can_ecuconnect:
@@ -35,40 +114,7 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
       if (*rx_packet->data == 0x0) {
         return false;
       }
-      CANFilter filter[2] = {{1, 1, 0, 0, 0, 0}, {2, 1, 0, 0, 0, 0}};
-      uint8_t filters_number = rx_packet->data[0];
-      uint8_t j = 0, id, id1, id2, id3;
-      for (uint8_t i = 0; i < filters_number; i = i + 4, j++) {
-        switch (filters_number - i) {
-        case 1:
-          id = (uint16_t)rx_packet->data[1 + i] | (uint16_t)(rx_packet->data[2 + i] << 8);
-          filter[j].register1 = (id << 5) | 0b010;
-          filter[j].register2 = 0;
-          break;
-        case 2:
-          id = (uint16_t)rx_packet->data[1 + i] | (uint16_t)(rx_packet->data[2 + i] << 8);
-          id1 = (uint16_t)rx_packet->data[3 + i] | (uint16_t)(rx_packet->data[4 + i] << 8);
-          filter[j].register1 = (((id << 5) | 0b010) << 16) | ((id1 << 5) | 0b010);
-          filter[j].register2 = 0;
-          break;
-        case 3:
-          id = (uint16_t)rx_packet->data[1 + i] | (uint16_t)(rx_packet->data[2 + i] << 8);
-          id1 = (uint16_t)rx_packet->data[3 + i] | (uint16_t)(rx_packet->data[4 + i] << 8);
-          id2 = (uint16_t)rx_packet->data[5 + i] | (uint16_t)(rx_packet->data[6 + i] << 8);
-          filter[j].register1 = (((id << 5) | 0b010) << 16) | ((id1 << 5) | 0b010);
-          filter[j].register2 = ((id2 << 5) | 0b010);
-          break;
-        case 4:
-          id = (uint16_t)rx_packet->data[1 + i] | (uint16_t)(rx_packet->data[2 + i] << 8);
-          id1 = (uint16_t)rx_packet->data[3 + i] | (uint16_t)(rx_packet->data[4 + i] << 8);
-          id2 = (uint16_t)rx_packet->data[5 + i] | (uint16_t)(rx_packet->data[6 + i] << 8);
-          id3 = (uint16_t)rx_packet->data[7 + i] | (uint16_t)(rx_packet->data[8 + i] << 8);
-          filter[j].register1 = (((id << 5) | 0b010) << 16) | ((id1 << 5) | 0b010);
-          filter[j].register2 = (((id2 << 5) | 0b010) << 16) | ((id3 << 5) | 0b010);
-          break;
-        }
-      }
-      canSTM32SetFilters(&CAND1, 0xE, j, &filter[0]);
+      set_can_filter(&CAND1, rx_packet->data);
       rccEnableCAN1(true);
     }
     return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
