@@ -52,20 +52,14 @@ struct packet_t {
 typedef enum {
   CAN_33KBPS,
   CAN_47KBPS,
-  CAN_50KBPS,
-  CAN_100KBPS,
-  CAN_125KBPS,
-  CAN_250KBPS,
   CAN_500KBPS,
-  CAN_600KBPS,
-  CAN_1000KBPS
 } BITRATE;
 
 typedef const struct {
   uint8_t TS2;
   uint8_t TS1;
   uint8_t BRP;
-} CAN_bit_timing_config_t;
+} CAN_bit_timing_t;
 
 
 extern bool CombiSendReplyPacket(packet_t *reply, packet_t *source,

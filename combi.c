@@ -10,14 +10,11 @@ void swab(uint16_t *word);
 bool readflash(LONG start_addr, LONG size);
 bool writeflash(char *flash_type, LONG start_addr, LONG size);
 
-CAN_bit_timing_config_t can_configs[9] = {{5, 15, 60}, {2, 11, 63}, {2, 12, 56},
-                                          {2, 12, 28}, {2, 13, 21}, {2, 11, 12},
-                                          {2, 11, 6}, {2, 11, 5}, {1, 5, 6}};
-
 uint8_t version[2] = {0x03, 0x01};
 uint8_t egt_temp[5] = {0};
 CANTxFrame txmsg = {.IDE = CAN_IDE_STD, .RTR = CAN_RTR_DATA};
 CANFilter filter[28] = {};
+CAN_bit_timing_t can_configs[3] = {{1, 8, 105}, {1, 8, 98}, {1, 8, 6}};
 
 void set_can_filter(CANDriver *can, uint8_t* data) {
   uint8_t j = 0, id, id1, id2, id3;
@@ -62,9 +59,8 @@ void set_can_filter(CANDriver *can, uint8_t* data) {
 }
 
 bool set_can_bitrate(BITRATE bitrate) {
-  CAN1->BTR &= ~(((0x03) << 24) | ((0x07) << 20) | ((0x0F) << 16) | (0x1FF));
-  CAN1->BTR |= (((can_configs[bitrate].TS2 - 1) & 0x07) << 20) | (((can_configs[bitrate].TS1 - 1) & 0x0F) << 16)
-      | ((can_configs[bitrate].BRP - 1) & 0x1FF);
+  CAN1->BTR = CAN_BTR_SJW(0) | CAN_BTR_TS2(can_configs[bitrate].TS2)
+      | CAN_BTR_TS1(can_configs[bitrate].TS1) | CAN_BTR_BRP(can_configs[bitrate].BRP);
   return true;
 }
 
