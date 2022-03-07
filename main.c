@@ -24,7 +24,9 @@ static const CANConfig cancfg = {CAN_MCR_ABOM | CAN_MCR_AWUM | CAN_MCR_TXFP, CAN
  */
 static const CANConfig swcancfg = {CAN_MCR_ABOM | CAN_MCR_AWUM | CAN_MCR_TXFP, CAN_BTR_SJW(0) | CAN_BTR_TS2(1)
                                      | CAN_BTR_TS1(8) | CAN_BTR_BRP(105)};
-
+/*
+ * Initial filter for CombiAdapter compatibility.
+ */
 CANFilter trionic8_filter[1] = { {1, 1, 0, 0, (((0x7E0 << 5) | 0b010) << 16) | ((0x7E8 << 5) | 0b010),
                                   (((0x5E8 << 5) | 0b010) << 16) | ((0 << 5) | 0b010)}};
 
@@ -142,7 +144,7 @@ static THD_FUNCTION(can_rx, p) {
   uint8_t size = 0;
   uint8_t buffer[IN_PACKETSIZE] = {0};
   uint8_t packetbuff[16] = {0};
-  packet_t tx_packet = {.data = packetbuff, .cmd_code = cmd_can_frame, .data_len = 15};
+  packet_t tx_packet = {.data = packetbuff, .cmd_code = cmd_can_rxframe, .data_len = 15};
   chRegSetThreadName("can receiver");
   chEvtRegister(&CAND1.rxfull_event, &el, 0);
   while (true) {
@@ -171,7 +173,7 @@ static THD_FUNCTION(swcan_rx, p) {
   uint8_t size = 0;
   uint8_t buffer[IN_PACKETSIZE] = {0};
   uint8_t packetbuff[16] = {0};
-  packet_t tx_packet = {.data = packetbuff, .cmd_code = cmd_swcan_frame, .data_len = 15};
+  packet_t tx_packet = {.data = packetbuff, .cmd_code = cmd_swcan_rxframe, .data_len = 15};
   chRegSetThreadName("swcan receiver");
   chEvtRegister(&CAND2.rxfull_event, &el, 0);
   while (true) {
