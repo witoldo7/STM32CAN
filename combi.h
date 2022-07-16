@@ -61,6 +61,7 @@ typedef const struct {
   uint8_t BRP;
 } CAN_bit_timing_t;
 
+extern icucnt_t last_width_ch1, last_period_ch1;
 
 extern bool CombiSendReplyPacket(packet_t *reply, packet_t *source,
                                  uint8_t *data, uint16_t data_len,

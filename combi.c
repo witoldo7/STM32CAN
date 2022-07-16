@@ -15,7 +15,7 @@ uint8_t egt_temp[5] = {0};
 CANTxFrame txmsg = {.IDE = CAN_IDE_STD, .RTR = CAN_RTR_DATA};
 CANFilter filter[28] = {};
 CAN_bit_timing_t can_configs[3] = {{1, 8, 105}, {1, 8, 98}, {1, 8, 6}};
-
+icucnt_t last_width_ch1 = 1, last_period_ch1 = 1;
 void set_can_filter(CANDriver *can, uint8_t* data) {
   uint8_t j = 0, id, id1, id2, id3;
   if (can == &CAND2) {
@@ -154,6 +154,35 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
   return false;
 }
 
+
+void float2Bytes(float val, uint8_t* bytes_array){
+  union {
+    float float_variable;
+    uint8_t temp_array[4];
+  } u;
+  u.float_variable = val;
+  memcpy(bytes_array, u.temp_array, 4);
+}
+
+bool GetADCValue(uint8_t *val, uint8_t channel) {
+  if (channel > 4) {
+    return false;
+  }
+  if (channel == 0) {
+    //last_period_ch1  > 0 ? (*val =(1.0f / last_period_ch1)) : (*val = 1.0f);
+   last_period_ch1 = icuGetPeriodX(&ICUD3);
+   if (last_period_ch1 == 0) {
+     last_period_ch1 += 1;
+   }
+
+    float fref = (100000.0f / (last_period_ch1 * 1.0)) + 0.1;
+    float2Bytes(fref, val);
+  } else {
+    float2Bytes(2.2f, val);
+  }
+  return true;
+}
+
 bool exec_cmd_board(packet_t *rx_packet, packet_t *tx_packet) {
   switch (rx_packet->cmd_code) {
   case cmd_brd_fwversion:
@@ -161,7 +190,9 @@ bool exec_cmd_board(packet_t *rx_packet, packet_t *tx_packet) {
   case cmd_brd_adcfilter:
     return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
   case cmd_brd_adc:
-    return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+    uint8_t value[5] = {0};
+    bool ret = GetADCValue(value, rx_packet->data[0]);
+    return ret & CombiSendReplyPacket(tx_packet, rx_packet, value , 4, cmd_term_ack);
   case cmd_brd_egt:
     return CombiSendReplyPacket(tx_packet, rx_packet, egt_temp, 5, cmd_term_ack);
   }
@@ -169,8 +200,7 @@ bool exec_cmd_board(packet_t *rx_packet, packet_t *tx_packet) {
 }
 
 bool CombiSendReplyPacket(packet_t *reply, packet_t *source, uint8_t *data,
-uint16_t data_len,
-                          uint8_t term) {
+                          uint16_t data_len, uint8_t term) {
   if ((reply == (packet_t*)0x0) || (source == (packet_t*)0x0)) {
     return false;
   }

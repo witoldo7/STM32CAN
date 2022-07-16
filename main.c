@@ -194,6 +194,40 @@ static THD_FUNCTION(swcan_rx, p) {
   chEvtUnregister(&CAND2.rxfull_event, &el);
 }
 
+static void icuwidthch1cb(ICUDriver *icup) {
+  last_width_ch1 = icuGetWidthX(icup);
+}
+
+static void icuperiodch1cb(ICUDriver *icup) {
+  last_period_ch1 = icuGetPeriodX(icup);
+}
+
+static ICUConfig icuch1cfg = {
+  ICU_INPUT_ACTIVE_HIGH,
+  100000,                                    /* 100kHz ICU clock frequency.   */
+  NULL,//icuwidthch1cb,
+  NULL,//icuperiodch1cb,
+  NULL,
+  ICU_CHANNEL_1,
+  0U,
+  0xFFFFFFFFU
+};
+
+static PWMConfig pwmcfg = {
+  100000,                                    /* 100kHz PWM clock frequency.   */
+  100,                                    /* Initial PWM period 0.1S.       */
+  NULL,
+  {
+   {PWM_OUTPUT_DISABLED, NULL},
+   {PWM_OUTPUT_ACTIVE_HIGH, NULL},
+   {PWM_OUTPUT_DISABLED, NULL},
+   {PWM_OUTPUT_DISABLED, NULL}
+  },
+  0,
+  0,
+  0
+};
+
 int main(void) {
   halInit();
   chSysInit();
@@ -206,6 +240,15 @@ int main(void) {
   //temporary disable, lets remote activate it
   rccDisableCAN1();
   rccDisableCAN2();
+  icuStart(&ICUD3, &icuch1cfg);
+  palSetPadMode(GPIOC, 6, PAL_MODE_ALTERNATE(2));
+  palSetPadMode(GPIOC, 7, PAL_MODE_ALTERNATE(2));
+  icuStartCapture(&ICUD3);
+  icuEnableNotifications(&ICUD3);
+
+  pwmStart(&PWMD4, &pwmcfg);
+  palSetPadMode(GPIOD, 13, PAL_MODE_ALTERNATE(2));
+  pwmEnableChannel(&PWMD4, 1, PWM_PERCENTAGE_TO_WIDTH(&PWMD4, 5000));
 
   usbDisconnectBus(&USBD1);
   chThdSleepMilliseconds(100);
