@@ -5,82 +5,65 @@
 #include "usbcombi.h"
 #include "bdm.h"
 #include "bdmcpu32.h"
+#include <utils.h>
 
-void swab(uint16_t *word);
 bool readflash(LONG start_addr, LONG size);
 bool writeflash(char *flash_type, LONG start_addr, LONG size);
 
 uint8_t version[2] = {0x03, 0x01};
 uint8_t egt_temp[5] = {0};
-CANTxFrame txmsg = {.IDE = CAN_IDE_STD, .RTR = CAN_RTR_DATA};
-CANFilter filter[28] = {};
-CAN_bit_timing_t can_configs[3] = {{1, 8, 105}, {1, 8, 98}, {1, 8, 6}};
+CANTxFrame txmsg = {.common.XTD = 0, .common.RTR = 0};
 
-void set_can_filter(CANDriver *can, uint8_t* data) {
-  uint8_t j = 0, id, id1, id2, id3;
-  if (can == &CAND2) {
-    j += 0xE;
-  }
-  for (uint8_t i = 0; i < data[0]; i = i + 4, j++) {
-    filter[j].filter = j;
-    filter[j].mode = 1;
-    filter[j].scale = 0;
-    filter[j].assignment = 0;
-    switch (data[0] - i) {
-    case 1:
-      id = (uint16_t)data[1 + i] | (uint16_t)(data[2 + i] << 8);
-      filter[j].register1 = (id << 5) | 0b010;
-      filter[j].register2 = 0;
-      break;
-    case 2:
-      id = (uint16_t)data[1 + i] | (uint16_t)(data[2 + i] << 8);
-      id1 = (uint16_t)data[3 + i] | (uint16_t)(data[4 + i] << 8);
-      filter[j].register1 = (((id << 5) | 0b010) << 16) | ((id1 << 5) | 0b010);
-      filter[j].register2 = 0;
-      break;
-    case 3:
-      id = (uint16_t)data[1 + i] | (uint16_t)(data[2 + i] << 8);
-      id1 = (uint16_t)data[3 + i] | (uint16_t)(data[4 + i] << 8);
-      id2 = (uint16_t)data[5 + i] | (uint16_t)(data[6 + i] << 8);
-      filter[j].register1 = (((id << 5) | 0b010) << 16) | ((id1 << 5) | 0b010);
-      filter[j].register2 = ((id2 << 5) | 0b010);
-      break;
-    case 4:
-      id = (uint16_t)data[1 + i] | (uint16_t)(data[2 + i] << 8);
-      id1 = (uint16_t)data[3 + i] | (uint16_t)(data[4 + i] << 8);
-      id2 = (uint16_t)data[5 + i] | (uint16_t)(data[6 + i] << 8);
-      id3 = (uint16_t)data[7 + i] | (uint16_t)(data[8 + i] << 8);
-      filter[j].register1 = (((id << 5) | 0b010) << 16) | ((id1 << 5) | 0b010);
-      filter[j].register2 = (((id2 << 5) | 0b010) << 16) | ((id3 << 5) | 0b010);
-      break;
-    }
-  }
-  canSTM32SetFilters(can, 0xE, j, &filter[0]);
-}
+static CANConfig canConfig1 = {
+  .DBTP = 0,
+  .CCCR =  0, //FDCAN_CCCR_TEST,
+  .TEST =  0, //FDCAN_TEST_LBCK,
+  .RXF0C = (32 << FDCAN_RXF0C_F0S_Pos) | (0 << FDCAN_RXF0C_F0SA_Pos),
+  .RXF1C = (32 << FDCAN_RXF1C_F1S_Pos) | (128 << FDCAN_RXF1C_F1SA_Pos),
+  .TXBC  = (32 << FDCAN_TXBC_TFQS_Pos) | (256 << FDCAN_TXBC_TBSA_Pos),
+  .TXESC = 0x000, // 8 Byte mode only (4 words per message)
+  .RXESC = 0x000 // 8 Byte mode only (4 words per message)
+};
 
-bool set_can_bitrate(BITRATE bitrate) {
-  CAN1->BTR = CAN_BTR_SJW(0) | CAN_BTR_TS2(can_configs[bitrate].TS2)
-      | CAN_BTR_TS1(can_configs[bitrate].TS1) | CAN_BTR_BRP(can_configs[bitrate].BRP);
-  return true;
-}
+static CANConfig canConfig2 = {
+  .DBTP = 0,
+  .CCCR =  0, //FDCAN_CCCR_TEST,
+  .TEST =  0, //FDCAN_TEST_LBCK,
+  .RXF0C = (32 << FDCAN_RXF0C_F0S_Pos) | (384 << FDCAN_RXF0C_F0SA_Pos),
+  .RXF1C = (32 << FDCAN_RXF1C_F1S_Pos) | (512 << FDCAN_RXF1C_F1SA_Pos),
+  .TXBC  = (32 << FDCAN_TXBC_TFQS_Pos) | (640 << FDCAN_TXBC_TBSA_Pos),
+  .TXESC = 0x000, // 8 Byte mode only (4 words per message)
+  .RXESC = 0x000 // 8 Byte mode only (4 words per message)
+};
 
 bool exec_cmd_swcan(packet_t *rx_packet, packet_t *tx_packet) {
   switch (rx_packet->cmd_code) {
   case cmd_swcan_open:
     if (rx_packet->data_len == 1) {
       if (*rx_packet->data != 0x1) {
-        rccDisableCAN2();
+        canStop(&CAND2);
         return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
       }
-      rccEnableCAN2(true);
+      canBaudRate(&canConfig2, 500000);
+      canStart(&CAND2, &canConfig2);
       return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
     }
     break;
+
+  case cmd_swcan_bitrate:
+    if (rx_packet->data_len == 4) {
+      uint32_t bitrate = rx_packet->data[3] | (uint32_t)*rx_packet->data << 0x18 | (uint32_t)rx_packet->data[1] << 0x10
+          | (uint32_t)rx_packet->data[2] << 8;
+
+      return canBaudRate(&canConfig2, bitrate) && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+    }
+   break;
+
   case cmd_swcan_txframe:
     if (rx_packet->data_len != 15) {
       return false;
     }
-    txmsg.SID = (uint32_t)rx_packet->data[0]
+    txmsg.std.SID = (uint32_t)rx_packet->data[0]
         | (uint32_t)(rx_packet->data[1] << 8)
         | (uint32_t)(rx_packet->data[2] << 16)
         | (uint32_t)(rx_packet->data[3] << 24);
@@ -89,12 +72,14 @@ bool exec_cmd_swcan(packet_t *rx_packet, packet_t *tx_packet) {
 
     return (canTransmit(&CAND2, CAN_ANY_MAILBOX, &txmsg, TIME_MS2I(100)) == MSG_OK )
         && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+  break;
+
   case cmd_swcan_filter:
     if (*rx_packet->data == 0x0) {
       return false;
     }
-    set_can_filter(&CAND2, rx_packet->data);
-    rccEnableCAN2(true);
+    //set_can_filter(&CAND2, rx_packet->data);
+    break;
   }
   return false;
 }
@@ -108,17 +93,17 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
       if (*rx_packet->data == 0x0) {
         return false;
       }
-      set_can_filter(&CAND1, rx_packet->data);
-      rccEnableCAN1(true);
+      //set_can_filter(&CAND1, rx_packet->data);
     }
     return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
   case cmd_can_open:
     if (rx_packet->data_len == 1) {
       if (*rx_packet->data != 0x1) {
-        rccDisableCAN1();
+        canStop(&CAND1);
         return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
       }
-      rccEnableCAN1(true);
+      canBaudRate(&canConfig1, 500000);
+      canStart(&CAND1, &canConfig1);
       return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
     }
     break;
@@ -126,24 +111,15 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
     if (rx_packet->data_len == 4) {
       uint32_t bitrate = rx_packet->data[3] | (uint32_t)*rx_packet->data << 0x18 | (uint32_t)rx_packet->data[1] << 0x10
           | (uint32_t)rx_packet->data[2] << 8;
-      switch (bitrate) {
-      case 500000:
-        set_can_bitrate(CAN_500KBPS);
-        break;
-      case 47619:
-        set_can_bitrate(CAN_47KBPS);
-        break;
-      default:
-        return false;
-      }
-      return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+
+      return canBaudRate(&canConfig1, bitrate) && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
     }
     break;
   case cmd_can_txframe:
     if (rx_packet->data_len != 15) {
       return false;
     }
-    txmsg.SID = (uint32_t)rx_packet->data[0] | (uint32_t)(rx_packet->data[1] << 8)
+    txmsg.std.SID = (uint32_t)rx_packet->data[0] | (uint32_t)(rx_packet->data[1] << 8)
         | (uint32_t)(rx_packet->data[2] << 16) | (uint32_t)(rx_packet->data[3] << 24);
     txmsg.DLC = rx_packet->data[12];
     memcpy(txmsg.data8, rx_packet->data + 4, rx_packet->data[12]);
@@ -475,14 +451,4 @@ bool writeflash(char *flash_type, LONG start_addr, LONG size) {
 
   // reset flash
   return (reset_func() && status);
-}
-
-void swab(uint16_t *word) {
-  uint16_t tmp;
-  if (word != 0) {
-    tmp = *word;
-    *word = *word << 8;
-    *word = tmp >> 8 | *word;
-  }
-  return;
 }
