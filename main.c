@@ -191,6 +191,9 @@ int main(void) {
   usbStart(&USBD1, &usb_config);
   usbConnectBus(&USBD1);
 
+  initCAN1();
+  rccDisableFDCAN();
+
   chThdCreateStatic(usb_rx_wa, sizeof(usb_rx_wa), NORMALPRIO + 7, usb_rx, NULL);
   chThdCreateStatic(combi_wa, sizeof(combi_wa), NORMALPRIO + 7, combi, NULL);
   chThdCreateStatic(can_rx_wa, sizeof(can_rx_wa), NORMALPRIO + 20, can_rx, NULL);

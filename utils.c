@@ -1,6 +1,9 @@
 #include <utils.h>
 #include "hal.h"
 
+#define FDCAN_MESSAGE_RAM_SIZE 0x2800U
+#define FDCAN_MESSAGE_RAM_END_ADDRESS (SRAMCAN_BASE + FDCAN_MESSAGE_RAM_SIZE - 0x4U)
+
 void swab(uint16_t *word) {
   uint16_t tmp;
   if (word != 0) {
@@ -9,6 +12,96 @@ void swab(uint16_t *word) {
     *word = tmp >> 8 | *word;
   }
   return;
+}
+
+void canFilter(CAN_RamAddress *msgRam, CAN_Filter *filter) {
+  uint32_t filterElementW1;
+  uint32_t filterElementW2;
+  uint32_t *filterAddress;
+
+  if (filter->IdType == FDCAN_STANDARD_ID) {
+    if (filter->FilterConfig == FDCAN_FILTER_TO_RXBUFFER) {
+      filterElementW1 = ((FDCAN_FILTER_TO_RXBUFFER << 27U)       |
+                           (filter->FilterID1 << 16U)       |
+                           (filter->IsCalibrationMsg << 8U) |
+                           filter->RxBufferIndex);
+    } else {
+      filterElementW1 = ((filter->FilterType << 30U)   |
+                         (filter->FilterConfig << 27U) |
+                         (filter->FilterID1 << 16U)    |
+                         filter->FilterID2);
+    }
+
+    filterAddress = (uint32_t *)(msgRam->StandardFilterSA + (filter->FilterIndex * 4U));
+    *filterAddress = filterElementW1;
+  } else {
+    filterElementW1 = ((filter->FilterConfig << 29U) | filter->FilterID1);
+    if (filter->FilterConfig == FDCAN_FILTER_TO_RXBUFFER) {
+      filterElementW2 = filter->RxBufferIndex;
+    } else {
+      filterElementW2 = ((filter->FilterType << 30U) | filter->FilterID2);
+    }
+
+    filterAddress = (uint32_t *)(msgRam->ExtendedFilterSA + (filter->FilterIndex * 4U * 2U));
+    *filterAddress = filterElementW1;
+    filterAddress++;
+    *filterAddress = filterElementW2;
+  }
+}
+
+void canGlobalFilter(CANConfig *can_cfg, uint32_t NonMatchingStd, uint32_t NonMatchingExt,
+                     uint32_t RejectRemoteStd, uint32_t RejectRemoteExt) {
+  can_cfg->GFC = ((NonMatchingStd << FDCAN_GFC_ANFS_Pos) |
+                 (NonMatchingExt << FDCAN_GFC_ANFE_Pos)  |
+                 (RejectRemoteStd << FDCAN_GFC_RRFS_Pos) |
+                 (RejectRemoteExt << FDCAN_GFC_RRFE_Pos));
+}
+
+bool canMemorryConfig(CANDriver *canp, CANConfig *can_cfg, CANRamConfig *cfg, CAN_RamAddress *msgRam) {
+  uint32_t RAMcounter;
+  uint32_t startAddress = cfg->MessageRAMOffset;
+
+  startAddress = cfg->MessageRAMOffset;
+  can_cfg->SIDFC = (cfg->StdFiltersNbr << FDCAN_SIDFC_LSS_Pos) | (startAddress << FDCAN_SIDFC_FLSSA_Pos);
+  startAddress += cfg->StdFiltersNbr;
+
+  can_cfg->XIDFC = (cfg->ExtFiltersNbr << FDCAN_XIDFC_FLESA_Pos) | (startAddress << FDCAN_XIDFC_LSE_Pos);
+  startAddress += cfg->ExtFiltersNbr * 2U;
+
+  can_cfg->RXF0C = (cfg->RxFifo0ElmtsNbr << FDCAN_RXF0C_F0S_Pos) | (startAddress << FDCAN_RXF0C_F0SA_Pos);
+  startAddress += cfg->RxFifo0ElmtsNbr * cfg->RxFifo0ElmtSize;
+
+  can_cfg->RXF1C = (cfg->RxFifo1ElmtsNbr << FDCAN_RXF1C_F1S_Pos) | (startAddress << FDCAN_RXF1C_F1SA_Pos);
+  startAddress += cfg->RxFifo1ElmtsNbr * cfg->RxFifo1ElmtSize;
+
+  can_cfg->RXBC = startAddress << FDCAN_RXBC_RBSA_Pos;
+  startAddress += cfg->RxBuffersNbr * cfg->RxBufferSize;
+
+  can_cfg->TXEFC = cfg->TxEventsNbr << FDCAN_TXEFC_EFS_Pos;
+  startAddress += cfg->TxEventsNbr * 2U;
+
+  can_cfg->TXBC  = (cfg->TxBuffersNbr << FDCAN_TXBC_NDTB_Pos) | (cfg->TxFifoQueueElmtsNbr << FDCAN_TXBC_TFQS_Pos)
+      | (startAddress << FDCAN_TXBC_TBSA_Pos);
+
+  msgRam->StandardFilterSA = (uint32_t)(canp->ram_base + (cfg->MessageRAMOffset * 4U));
+  msgRam->ExtendedFilterSA = msgRam->StandardFilterSA + (cfg->StdFiltersNbr * 4U);
+  msgRam->RxFIFO0SA = msgRam->ExtendedFilterSA + (cfg->ExtFiltersNbr * 2U * 4U);
+  msgRam->RxFIFO1SA = msgRam->RxFIFO0SA + (cfg->RxFifo0ElmtsNbr * cfg->RxFifo0ElmtSize * 4U);
+  msgRam->RxBufferSA = msgRam->RxFIFO1SA + (cfg->RxFifo1ElmtsNbr * cfg->RxFifo1ElmtSize * 4U);
+  msgRam->TxEventFIFOSA = msgRam->RxBufferSA + (cfg->RxBuffersNbr * cfg->RxBufferSize * 4U);
+  msgRam->TxBufferSA = msgRam->TxEventFIFOSA + (cfg->TxEventsNbr * 2U * 4U);
+  msgRam->TxFIFOQSA = msgRam->TxBufferSA + (cfg->TxBuffersNbr * cfg->TxElmtSize * 4U);
+  msgRam->EndAddress = msgRam->TxFIFOQSA + (cfg->TxFifoQueueElmtsNbr * cfg->TxElmtSize * 4U);
+
+  if (msgRam->EndAddress > FDCAN_MESSAGE_RAM_END_ADDRESS) {
+    return false;
+  } else {
+    for (RAMcounter = msgRam->StandardFilterSA; RAMcounter < msgRam->EndAddress; RAMcounter += 4U)
+    {
+      *(uint32_t *)(RAMcounter) = 0x00000000;
+    }
+  }
+  return true;
 }
 
 /**

@@ -14,13 +14,55 @@ uint8_t version[2] = {0x03, 0x01};
 uint8_t egt_temp[5] = {0};
 CANTxFrame txmsg = {.common.XTD = 0, .common.RTR = 0};
 
+CAN_RamAddress can1_ram;
+
+CAN_Filter filter0 = {
+  .IdType = FDCAN_STANDARD_ID,
+  .FilterIndex = 0,
+  .FilterType = FDCAN_FILTER_MASK,
+  .FilterConfig = FDCAN_FILTER_TO_RXFIFO0,
+  .FilterID1 = 0x7E8,
+  .FilterID2 = 0x7FF,
+};
+
+CAN_Filter filter1 = {
+  .IdType = FDCAN_STANDARD_ID,
+  .FilterIndex = 1,
+  .FilterType = FDCAN_FILTER_MASK,
+  .FilterConfig = FDCAN_FILTER_TO_RXFIFO0,
+  .FilterID1 = 0x7E0,
+  .FilterID2 = 0x7FF,
+};
+
+CAN_Filter filter2 = {
+  .IdType = FDCAN_STANDARD_ID,
+  .FilterIndex = 2,
+  .FilterType = FDCAN_FILTER_MASK,
+  .FilterConfig = FDCAN_FILTER_TO_RXFIFO0,
+  .FilterID1 = 0x5E8,
+  .FilterID2 = 0x7FF,
+};
+
+CANRamConfig can1_ram_cfg = {
+  .MessageRAMOffset = 0,
+  .StdFiltersNbr = 4,
+  .ExtFiltersNbr = 0,
+  .RxFifo0ElmtsNbr = 2,
+  .RxFifo0ElmtSize = FDCAN_DATA_BYTES_8,
+  .RxFifo1ElmtsNbr = 2,
+  .RxFifo1ElmtSize = FDCAN_DATA_BYTES_8,
+  .RxBuffersNbr = 2,
+  .RxBufferSize = FDCAN_DATA_BYTES_8,
+  .TxEventsNbr = 2,
+  .TxBuffersNbr = 2,
+  .TxFifoQueueElmtsNbr = 2,
+  .TxElmtSize = FDCAN_DATA_BYTES_8
+};
+
 static CANConfig canConfig1 = {
-  .DBTP = 0,
+  .DBTP =  0,
   .CCCR =  0, //FDCAN_CCCR_TEST,
   .TEST =  0, //FDCAN_TEST_LBCK,
-  .RXF0C = (32 << FDCAN_RXF0C_F0S_Pos) | (0 << FDCAN_RXF0C_F0SA_Pos),
-  .RXF1C = (32 << FDCAN_RXF1C_F1S_Pos) | (128 << FDCAN_RXF1C_F1SA_Pos),
-  .TXBC  = (32 << FDCAN_TXBC_TFQS_Pos) | (256 << FDCAN_TXBC_TBSA_Pos),
   .TXESC = 0x000, // 8 Byte mode only (4 words per message)
   .RXESC = 0x000 // 8 Byte mode only (4 words per message)
 };
@@ -35,6 +77,17 @@ static CANConfig canConfig2 = {
   .TXESC = 0x000, // 8 Byte mode only (4 words per message)
   .RXESC = 0x000 // 8 Byte mode only (4 words per message)
 };
+
+void initCAN1(void) {
+  canBaudRate(&canConfig1, 500000);
+  canMemorryConfig(&CAND1, &canConfig1, &can1_ram_cfg, &can1_ram);
+  canGlobalFilter(&canConfig1, FDCAN_REJECT, FDCAN_REJECT, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
+  canStart(&CAND1, &canConfig1);
+  //Trionic 8 filters
+  canFilter(&can1_ram, &filter0);
+  canFilter(&can1_ram, &filter1);
+  canFilter(&can1_ram, &filter2);
+}
 
 bool exec_cmd_swcan(packet_t *rx_packet, packet_t *tx_packet) {
   switch (rx_packet->cmd_code) {
@@ -99,11 +152,10 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
   case cmd_can_open:
     if (rx_packet->data_len == 1) {
       if (*rx_packet->data != 0x1) {
-        canStop(&CAND1);
+        rccDisableFDCAN();
         return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
       }
-      canBaudRate(&canConfig1, 500000);
-      canStart(&CAND1, &canConfig1);
+      rccEnableFDCAN(true);
       return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
     }
     break;
