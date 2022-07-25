@@ -16,6 +16,7 @@
 #include <linux/signal.h>
 #include <linux/slab.h>
 #include <linux/usb.h>
+#include <linux/bitfield.h>
 
 /* vendor and product id */
 #define WQCAN_MODULE_NAME "wqcan"
@@ -30,7 +31,7 @@
 /* RX buffer must be bigger than msg size since at the
  * beginning USB messages are stacked.
  */
-#define WQCAN_USB_RX_BUFF_SIZE 64
+#define WQCAN_USB_RX_BUFF_SIZE 64*2
 
 /* WQCAN endpoint numbers */
 #define WQCAN_USB_EP_IN 2
@@ -46,8 +47,49 @@
 
 #define WQCAN_CMD_CAN_OPEN 0x80
 #define WQCAN_CMD_CAN_BIT_RATE 0x81
-#define WQCAN_CMD_CAN_RECEIVE_MESSAGE 0x82
-#define WQCAN_CMD_CAN_TRANSMIT_MESSAGE 0x83
+#define WQCAN_CMD_CAN_RECEIVE_MESSAGE 0x85
+#define WQCAN_CMD_CAN_TRANSMIT_MESSAGE 0x86
+
+/* Data Bit Timing & Prescaler Register (DBTP) */
+#define DBTP_TDC		BIT(23)
+#define DBTP_DBRP_MASK		GENMASK(20, 16)
+#define DBTP_DTSEG1_MASK	GENMASK(12, 8)
+#define DBTP_DTSEG2_MASK	GENMASK(7, 4)
+#define DBTP_DSJW_MASK		GENMASK(3, 0)
+
+/* Nominal Bit Timing & Prescaler Register (NBTP) */
+#define NBTP_NSJW_MASK		GENMASK(31, 25)
+#define NBTP_NBRP_MASK		GENMASK(24, 16)
+#define NBTP_NTSEG1_MASK	GENMASK(15, 8)
+#define NBTP_NTSEG2_MASK	GENMASK(6, 0)
+
+/* Transmitter Delay Compensation Register (TDCR) */
+#define TDCR_TDCO_MASK		GENMASK(14, 8)
+#define TDCR_TDCF_MASK		GENMASK(6, 0)
+
+static const struct can_bittiming_const wqcan_can_fd_bit_timing_max = {
+	.name = "wqcan_can_fd",
+	.tseg1_min = 2,		/* Time segment 1 = prop_seg + phase_seg1 */
+	.tseg1_max = 256,
+	.tseg2_min = 2,		/* Time segment 2 = phase_seg2 */
+	.tseg2_max = 128,
+	.sjw_max = 128,
+	.brp_min = 1,
+	.brp_max = 512,
+	.brp_inc = 1,
+};
+
+static const struct can_bittiming_const wqcan_can_fd_bit_timing_data_max = {
+	.name = "wqcan_can_fd",
+	.tseg1_min = 1,		/* Time segment 1 = prop_seg + phase_seg1 */
+	.tseg1_max = 32,
+	.tseg2_min = 1,		/* Time segment 2 = phase_seg2 */
+	.tseg2_max = 16,
+	.sjw_max = 16,
+	.brp_min = 1,
+	.brp_max = 32,
+	.brp_inc = 1,
+};
 
 struct wqcan_usb_ctx {
 	struct wqcan_priv *priv;
@@ -73,23 +115,60 @@ struct wqcan_priv {
 	dma_addr_t rxbuf_dma[WQCAN_MAX_RX_URBS];
 };
 
-/* CAN frame */
-struct __packed wqcan_usb_msg_can {
+/* CAN RX frame */
+/* data[0:3] - SID or EID
+ * data[4]
+ *    b0 - XTD
+ *    b1 - RTR
+ *    b2 - ESI
+ *    b3 - BRS
+ *    b4 - FDF
+ *    b4 - ANMF
+ * data[5] - FIDX
+ * data[6:7] - RXTS
+ * data[8] - DLC
+ * data[9:9+DLC] - data
+ */
+struct __packed wqcan_usb_msg_can_rx {
 	u8 cmd_id;
 	u16 len;
-	__be16 sid;
-	__be16 eid;
-	u8 data[8];
-	u8 dlc;
-	u8 extended;
-	u8 remote;
+	u8 SID[4];
+	u8 CFG;
+	u8 FIDX;
+	u16 RXTS;
+	u8 DLC;
+	u8 data[64];
+	u8 term;
+};
+
+/* CAN TX frame */
+  /* data[0:3] - SID or EID
+   * data[4]
+   *    b0 - XTD
+   *    b1 - RTR
+   *    b2 - ESI
+   *    b3 - BPS
+   *    b4 - FDF
+   *    b5 - EFC
+   * data[5] - MM
+   * data[6] - DLC
+   * data[7:7+DLC] - data
+   */
+struct __packed wqcan_usb_msg_can_tx {
+	u8 cmd_id;
+	u16 len;
+	u8 SID[4];
+	u8 CFG;
+	u8 MM;
+	u8 DLC;
+	u8 data[64];
 	u8 term;
 };
 
 /* command frame */
 struct __packed wqcan_usb_msg {
 	u8 cmd_id;
-	u8 unused[18];
+	u8 unused[80];
 };
 
 struct __packed wqcan_usb_msg_ka_usb {
@@ -103,7 +182,9 @@ struct __packed wqcan_usb_msg_ka_usb {
 struct __packed wqcan_usb_msg_can_bitrate {
 	u8 cmd_id;
 	u16 len;
-	u32 bitrate;
+	u8 cmd;
+	u32 reg0;
+	u32 reg1;
 	u8 term;
 };
 
@@ -117,6 +198,7 @@ struct __packed wqcan_usb_msg_can_open {
 	u8 cmd_id;
 	u16 len;
 	u8 data;
+	u32 mode;
 	u8 term;
 };
 
@@ -127,7 +209,6 @@ static const struct usb_device_id wqcan_usb_table[] = {
 
 MODULE_DEVICE_TABLE(usb, wqcan_usb_table);
 
-static const u32 wqcan_bitrate[] = { 33333, 47619, 500000};
 
 static inline void wqcan_init_ctx(struct wqcan_priv *priv)
 {
@@ -142,7 +223,7 @@ static inline void wqcan_init_ctx(struct wqcan_priv *priv)
 }
 
 static inline struct wqcan_usb_ctx *wqcan_usb_get_free_ctx(struct wqcan_priv *priv,
-							 struct can_frame *cf)
+							 struct canfd_frame *cf)
 {
 	int i = 0;
 	struct wqcan_usb_ctx *ctx = NULL;
@@ -277,13 +358,14 @@ static netdev_tx_t wqcan_usb_start_xmit(struct sk_buff *skb,
 				       struct net_device *netdev)
 {
 	struct wqcan_priv *priv = netdev_priv(netdev);
-	struct can_frame *cf = (struct can_frame *)skb->data;
+	struct canfd_frame *cf = (struct canfd_frame *)skb->data;
 	struct wqcan_usb_ctx *ctx = NULL;
 	struct net_device_stats *stats = &priv->netdev->stats;
-	u16 sid;
 	int err;
-	struct wqcan_usb_msg_can usb_msg = {
-		.cmd_id = WQCAN_CMD_CAN_TRANSMIT_MESSAGE
+	u8 flags = 0; 
+	
+	struct wqcan_usb_msg_can_tx usb_msg = {
+		.cmd_id = WQCAN_CMD_CAN_TRANSMIT_MESSAGE,
 	};
 
 	if (can_dropped_invalid_skb(netdev, skb))
@@ -294,31 +376,40 @@ static netdev_tx_t wqcan_usb_start_xmit(struct sk_buff *skb,
 		return NETDEV_TX_BUSY;
 
 	if (cf->can_id & CAN_EFF_FLAG) {
-		/* SIDH    | SIDL                 | EIDH   | EIDL
-		 * 28 - 21 | 20 19 18 x x x 17 16 | 15 - 8 | 7 - 0
-		 */
-		usb_msg.extended = 1;
-		/* store 28-18 bits */
-		sid |= (cf->can_id & 0x1ffc0000) >> 13;
-		/* store 17-16 bits */
-		sid |= (cf->can_id & 0x30000) >> 16;
-		put_unaligned_be16(sid, &usb_msg.sid);
-
-		/* store 15-0 bits */
-		put_unaligned_be16(cf->can_id & 0xffff, &usb_msg.eid);
+		u32 eid = cf->can_id & CAN_EFF_MASK;
+		usb_msg.SID[0] = eid & 0xFF; 
+		usb_msg.SID[1] = (eid >> 8) & 0xFF;
+		usb_msg.SID[2] = (eid >> 16) & 0xFF;
+		usb_msg.SID[3] = (eid >> 24) & 0xFF;
+		flags |= 0b00000001;
 	} else {
-		/* SIDH   | SIDL
-		 * 10 - 3 | 2 1 0 x x x x x
-		 */
-		put_unaligned_be16((cf->can_id & CAN_SFF_MASK) << 5,
-				   &usb_msg.sid);
-		usb_msg.eid = 0;
+		u32 sid = cf->can_id & CAN_SFF_MASK;
+		usb_msg.SID[0] = sid & 0xFF; 
+		usb_msg.SID[1] = (sid >> 8) & 0xFF;
+		usb_msg.SID[2] = (sid >> 16) & 0xFF;
+		usb_msg.SID[3] = 0;
 	}
 
-	usb_msg.dlc = cf->len;
+	if (cf->can_id & CAN_RTR_FLAG)
+	{
+		flags |= 0b00000010;
+	}
+	
+	if (cf->flags & CANFD_ESI)
+	{
+		flags |= 0b00010000;
+	}
+	
+	if (can_is_canfd_skb(skb)) 
+	{
+		flags |= 0b00010000;
+		if (cf->flags & CANFD_BRS)
+		flags |= 0b00001000;
+	}
 
-	memcpy(usb_msg.data, cf->data, usb_msg.dlc);
-
+	usb_msg.CFG = flags;
+	usb_msg.DLC = can_fd_len2dlc(cf->len);
+	memcpy(usb_msg.data, cf->data, cf->len);
 
 	can_put_echo_skb(skb, priv->netdev, ctx->ndx, 0);
 
@@ -359,15 +450,24 @@ static void wqcan_usb_xmit_cmd(struct wqcan_priv *priv,
 			   usb_msg->cmd_id);
 }
 
-static void wqcan_usb_xmit_change_bitrate(struct wqcan_priv *priv, u32 bitrate)
+static void wqcan_usb_xmit_change_bitrate(struct wqcan_priv *priv, u8 cmd, u32 reg_btp, u32 reg_tdcr)
 {
 	struct wqcan_usb_msg_can_bitrate usb_msg = {
 		.cmd_id = WQCAN_CMD_CAN_BIT_RATE,
+		.cmd = cmd,
 		.term = 0
 	};
-	put_unaligned_be16(4, &usb_msg.len);
+	if (cmd == 2) 
+	{
+		put_unaligned_be16(9, &usb_msg.len);
+		put_unaligned_be32(reg_tdcr, &usb_msg.reg1);
+	} 
+	else 
+	{
+		put_unaligned_be16(5, &usb_msg.len);
+	}
 
-	put_unaligned_be32(bitrate, &usb_msg.bitrate);
+	put_unaligned_be32(reg_btp, &usb_msg.reg0);
 
 	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
 }
@@ -383,61 +483,80 @@ static void wqcan_usb_xmit_read_fw_ver(struct wqcan_priv *priv)
 	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
 }
 
-static void wqcan_usb_can_open(struct wqcan_priv *priv)
+static void wqcan_usb_can_open(struct wqcan_priv *priv, u8 cmd)
+{
+	u32 mode = priv->can.ctrlmode;
+	struct wqcan_usb_msg_can_open usb_msg = {
+		.cmd_id = WQCAN_CMD_CAN_OPEN,
+		.data = cmd,
+		.term = 0
+	};
+	put_unaligned_be16(5, &usb_msg.len);
+	put_unaligned_be32(mode, &usb_msg.mode);
+
+	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
+}
+
+static void wqcan_usb_can_close(struct wqcan_priv *priv)
 {
 	struct wqcan_usb_msg_can_open usb_msg = {
 		.cmd_id = WQCAN_CMD_CAN_OPEN,
-		.data = 1,
+		.data = 0,
 		.term = 0
 	};
 	put_unaligned_be16(1, &usb_msg.len);
 	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
-	usb_msg.cmd_id = WQCAN_CMD_SWCAN_OPEN;
-	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
 }
 
 static void wqcan_usb_process_can(struct wqcan_priv *priv,
-				 struct wqcan_usb_msg_can *msg)
+				 struct wqcan_usb_msg_can_rx *msg)
 {
-	struct can_frame *cf;
+	struct canfd_frame *cf;
 	struct sk_buff *skb;
 	struct net_device_stats *stats = &priv->netdev->stats;
-	u16 sid;
 
-	skb = alloc_can_skb(priv->netdev, &cf);
+	if ((msg->CFG >> 4) & 0x1) 
+		skb = alloc_canfd_skb(priv->netdev, &cf);
+	else
+		skb = alloc_can_skb(priv->netdev, (struct can_frame **)&cf);
+	
 	if (!skb)
+	{
+		stats->rx_dropped++;
 		return;
-
-	sid = get_unaligned_be16(&msg->sid);
-
-	if (&msg->extended == 1) {
-		/* SIDH    | SIDL                 | EIDH   | EIDL
-		 * 28 - 21 | 20 19 18 x x x 17 16 | 15 - 8 | 7 - 0
-		 */
+	}
+	
+	if (msg->CFG & 0x1) 
+	{
+		u32 eid = msg->SID[0] | (u32)(msg->SID[1] << 8)
+				| (u32)(msg->SID[2] << 16) | (u32)(msg->SID[3] << 24);
 		cf->can_id = CAN_EFF_FLAG;
-
-		/* store 28-18 bits */
-		cf->can_id |= (sid & 0xffe0) << 13;
-		/* store 17-16 bits */
-		cf->can_id |= (sid & 3) << 16;
-		/* store 15-0 bits */
-		cf->can_id |= get_unaligned_be16(&msg->eid);
-	} else {
-		/* SIDH   | SIDL
-		 * 10 - 3 | 2 1 0 x x x x x
-		 */
-		cf->can_id = (sid & 0xffe0) >> 5;
+		cf->can_id |= eid;
+	} 
+	else 
+	{
+		u16 sid = msg->SID[0] | (u16)(msg->SID[1] << 8) | (u16)(msg->SID[2] << 16);
+		cf->can_id = sid & CAN_SFF_MASK;
 	}
 
-	cf->len = can_cc_dlc2len(msg->dlc);
+	if ((msg->CFG >> 4) & 0x1) 
+		cf->len = can_fd_dlc2len(msg->DLC);
+	else
+		cf->len = can_cc_dlc2len(msg->DLC);
+	
+	if ((msg->CFG >> 2) & 0x1) {	
+		cf->flags |= CANFD_ESI;
+		netdev_dbg(priv->netdev, "ESI Error\n");
+	}
 
-	if (&msg->remote == 1) {
+	if ((msg->CFG >> 1) & 0x1) 
+	{
 		cf->can_id |= CAN_RTR_FLAG;
 	} else {
 		memcpy(cf->data, msg->data, cf->len);
-
 		stats->rx_bytes += cf->len;
 	}
+	
 	stats->rx_packets++;
 
 	can_led_event(priv->netdev, CAN_LED_EVENT_RX);
@@ -465,8 +584,7 @@ static void wqcan_usb_process_rx(struct wqcan_priv *priv,
 		break;
 
 	case WQCAN_CMD_CAN_RECEIVE_MESSAGE:
-	case WQCAN_CMD_SWCAN_RECEIVE_MESSAGE:
-		wqcan_usb_process_can(priv, (struct wqcan_usb_msg_can *)msg);
+		wqcan_usb_process_can(priv, (struct wqcan_usb_msg_can_rx *)msg);
 		break;
 
 	default:
@@ -596,9 +714,7 @@ static int wqcan_usb_start(struct wqcan_priv *priv)
 	/* Warn if we've couldn't transmit all the URBs */
 	if (i < WQCAN_MAX_RX_URBS)
 		netdev_warn(netdev, "rx performance may be slow\n");
-
 	wqcan_usb_xmit_read_fw_ver(priv);
-	wqcan_usb_can_open(priv);
 	return err;
 }
 
@@ -607,8 +723,9 @@ static int wqcan_usb_open(struct net_device *netdev)
 {
 	struct wqcan_priv *priv = netdev_priv(netdev);
 	int err;
-
+	wqcan_usb_can_open(priv, 2);
 	/* common open */
+
 	err = open_candev(netdev);
 	if (err)
 		return err;
@@ -639,7 +756,7 @@ static void wqcan_urb_unlink(struct wqcan_priv *priv)
 static int wqcan_usb_close(struct net_device *netdev)
 {
 	struct wqcan_priv *priv = netdev_priv(netdev);
-
+	wqcan_usb_can_close(priv);
 	priv->can.state = CAN_STATE_STOPPED;
 
 	netif_stop_queue(netdev);
@@ -660,8 +777,11 @@ static int wqcan_net_set_mode(struct net_device *netdev, enum can_mode mode)
 
 	switch (mode) {
 	case CAN_MODE_START:
-		wqcan_usb_can_open(priv);
-		err = 0;
+		wqcan_usb_can_open(priv, 2);
+		break;
+	case CAN_MODE_STOP:
+		wqcan_usb_can_close(priv);
+		break;
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -689,16 +809,80 @@ static const struct net_device_ops wqcan_netdev_ops = {
 static int wqcan_net_set_bittiming(struct net_device *netdev)
 {
 	struct wqcan_priv *priv = netdev_priv(netdev);
-	const u32 bitrate_kbps = priv->can.bittiming.bitrate;
+	const struct can_bittiming *bt = &priv->can.bittiming;
+	u16 brp, sjw, tseg1, tseg2;
+	u32 reg_btp;
 
-	wqcan_usb_xmit_change_bitrate(priv, bitrate_kbps);
+	brp = bt->brp - 1;
+	sjw = bt->sjw - 1;
+	tseg1 = bt->prop_seg + bt->phase_seg1 - 1;
+	tseg2 = bt->phase_seg2 - 1;
+	reg_btp = FIELD_PREP(NBTP_NBRP_MASK, brp) |
+		  FIELD_PREP(NBTP_NSJW_MASK, sjw) |
+		  FIELD_PREP(NBTP_NTSEG1_MASK, tseg1) |
+		  FIELD_PREP(NBTP_NTSEG2_MASK, tseg2);
 
+	wqcan_usb_xmit_change_bitrate(priv, 0, reg_btp, 0);
+
+	return 0;
+}
+
+static int wqcan_net_set_data_bittiming(struct net_device *netdev)
+{
+	struct wqcan_priv *priv = netdev_priv(netdev);
+	const struct can_bittiming *dbt = &priv->can.data_bittiming;
+	u16 brp, sjw, tseg1, tseg2;
+	u32 reg_btp, reg_tdcr;
+	u8 cmd = 1;
+
+	brp = dbt->brp - 1;
+	sjw = dbt->sjw - 1;
+	tseg1 = dbt->prop_seg + dbt->phase_seg1 - 1;
+	tseg2 = dbt->phase_seg2 - 1;
+
+	/* TDC is only needed for bitrates beyond 2.5 MBit/s.
+		* This is mentioned in the "Bit Time Requirements for CAN FD"
+		* paper presented at the International CAN Conference 2013
+		*/
+	if (dbt->bitrate > 2500000) {
+		u32 tdco, ssp;
+
+		/* Use the same value of secondary sampling point
+			* as the data sampling point
+			*/
+		ssp = dbt->sample_point;
+
+		/* Equation based on Bosch's M_CAN User Manual's
+			* Transmitter Delay Compensation Section
+			*/
+		tdco = (priv->can.clock.freq / 1000) *
+			ssp / dbt->bitrate;
+
+		/* Max valid TDCO value is 127 */
+		if (tdco > 127) {
+			netdev_warn(netdev, "TDCO value of %u is beyond maximum. Using maximum possible value\n",
+					tdco);
+			tdco = 127;
+		}
+
+		reg_btp |= DBTP_TDC;
+		reg_tdcr = FIELD_PREP(TDCR_TDCO_MASK, tdco);
+		cmd = 2;
+	}
+
+	reg_btp |= FIELD_PREP(DBTP_DBRP_MASK, brp) |
+		FIELD_PREP(DBTP_DSJW_MASK, sjw) |
+		FIELD_PREP(DBTP_DTSEG1_MASK, tseg1) |
+		FIELD_PREP(DBTP_DTSEG2_MASK, tseg2);
+
+	wqcan_usb_xmit_change_bitrate(priv, cmd, reg_btp, reg_tdcr);
 	return 0;
 }
 
 static int wqcan_usb_probe(struct usb_interface *intf,
 			  const struct usb_device_id *id)
 {
+	dev_info(&intf->dev, "WQCAN probe\n");
 	struct net_device *netdev;
 	struct wqcan_priv *priv;
 	int err;
@@ -725,11 +909,20 @@ static int wqcan_usb_probe(struct usb_interface *intf,
 
 	/* Init CAN device */
 	priv->can.state = CAN_STATE_STOPPED;
-	priv->can.bitrate_const = wqcan_bitrate;
-	priv->can.bitrate_const_cnt = ARRAY_SIZE(wqcan_bitrate);
+	priv->can.bittiming_const = &wqcan_can_fd_bit_timing_max;
+	priv->can.data_bittiming_const = &wqcan_can_fd_bit_timing_data_max;
 	priv->can.do_set_mode = wqcan_net_set_mode;
 	priv->can.do_get_berr_counter = wqcan_net_get_berr_counter;
 	priv->can.do_set_bittiming = wqcan_net_set_bittiming;
+	priv->can.do_set_data_bittiming = wqcan_net_set_data_bittiming;
+	priv->can.clock.freq = 80000000;
+	priv->can.ctrlmode_supported = CAN_CTRLMODE_LOOPBACK
+					| CAN_CTRLMODE_LISTENONLY
+					| CAN_CTRLMODE_FD
+					| CAN_CTRLMODE_BERR_REPORTING
+					| CAN_CTRLMODE_FD_NON_ISO
+					| CAN_CTRLMODE_ONE_SHOT
+					| CAN_CTRLMODE_TDC_AUTO;
 
 	netdev->netdev_ops = &wqcan_netdev_ops;
 
@@ -794,5 +987,5 @@ static struct usb_driver wqcan_usb_driver = {
 module_usb_driver(wqcan_usb_driver);
 
 MODULE_AUTHOR("Witold Olechowski <witusio@gmail.com>");
-MODULE_DESCRIPTION("SocketCAN driver for CombbiAdapter");
+MODULE_DESCRIPTION("SocketCAN driver for STM32CAN");
 MODULE_LICENSE("GPL v2");
