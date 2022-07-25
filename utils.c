@@ -4,6 +4,15 @@
 #define FDCAN_MESSAGE_RAM_SIZE 0x2800U
 #define FDCAN_MESSAGE_RAM_END_ADDRESS (SRAMCAN_BASE + FDCAN_MESSAGE_RAM_SIZE - 0x4U)
 
+static const uint8_t dlc2len[] = {
+    0, 1, 2, 3, 4, 5, 6, 7,
+    8, 12, 16, 20, 24, 32, 48, 64
+};
+
+uint8_t can_fd_dlc2len(uint8_t dlc) {
+  return dlc2len[dlc & 0x0F];
+}
+
 void swab(uint16_t *word) {
   uint16_t tmp;
   if (word != 0) {

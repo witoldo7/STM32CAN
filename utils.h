@@ -27,7 +27,26 @@
 #define FDCAN_FILTER_REMOTE ((uint32_t)0x00000000U) /*!< Filter remote frames */
 #define FDCAN_REJECT_REMOTE ((uint32_t)0x00000001U) /*!< Reject all remote frames */
 
-#define FDCAN_DATA_BYTES_8  ((uint32_t)0x00000004U)
+#define FDCAN_DATA_BYTES_8  ((uint32_t)0x00000004U) /*!< 8 bytes data field  */
+#define FDCAN_DATA_BYTES_12 ((uint32_t)0x00000005U) /*!< 12 bytes data field */
+#define FDCAN_DATA_BYTES_16 ((uint32_t)0x00000006U) /*!< 16 bytes data field */
+#define FDCAN_DATA_BYTES_20 ((uint32_t)0x00000007U) /*!< 20 bytes data field */
+#define FDCAN_DATA_BYTES_24 ((uint32_t)0x00000008U) /*!< 24 bytes data field */
+#define FDCAN_DATA_BYTES_32 ((uint32_t)0x0000000AU) /*!< 32 bytes data field */
+#define FDCAN_DATA_BYTES_48 ((uint32_t)0x0000000EU) /*!< 48 bytes data field */
+#define FDCAN_DATA_BYTES_64 ((uint32_t)0x00000012U) /*!< 64 bytes data field */
+
+#define CAN_CTRLMODE_LOOPBACK       0x01    /* Loopback mode */
+#define CAN_CTRLMODE_LISTENONLY     0x02    /* Listen-only mode */
+#define CAN_CTRLMODE_3_SAMPLES      0x04    /* Triple sampling mode */
+#define CAN_CTRLMODE_ONE_SHOT       0x08    /* One-Shot mode */
+#define CAN_CTRLMODE_BERR_REPORTING 0x10    /* Bus-error reporting */
+#define CAN_CTRLMODE_FD             0x20    /* CAN FD mode */
+#define CAN_CTRLMODE_PRESUME_ACK    0x40    /* Ignore missing CAN ACKs */
+#define CAN_CTRLMODE_FD_NON_ISO     0x80    /* CAN FD in non-ISO mode */
+#define CAN_CTRLMODE_CC_LEN8_DLC    0x100   /* Classic CAN DLC option */
+#define CAN_CTRLMODE_TDC_AUTO       0x200   /* CAN transiver automatically calculates TDCV */
+#define CAN_CTRLMODE_TDC_MANUAL     0x400   /* TDCV is manually set up by user */
 
 typedef struct
 {
@@ -71,6 +90,7 @@ typedef struct {
 } CANRamConfig;
 
 void swab(uint16_t *word);
+uint8_t can_fd_dlc2len(uint8_t dlc);
 bool canBaudRate(CANConfig *can_cfg, uint32_t can_baudrate);
 bool canMemorryConfig(CANDriver *canp, CANConfig *can_cfg, CANRamConfig *cfg, CAN_RamAddress *msgRam);
 void canGlobalFilter(CANConfig *can_cfg, uint32_t NonMatchingStd, uint32_t NonMatchingExt,

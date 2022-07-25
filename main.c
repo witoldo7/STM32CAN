@@ -126,9 +126,8 @@ static THD_FUNCTION(can_rx, p) {
   event_listener_t el;
   CANRxFrame rxmsg = {};
   uint8_t size = 0;
-  uint8_t buffer[IN_PACKETSIZE] = {0};
-  uint8_t packetbuff[16] = {0};
-  packet_t tx_packet = {.data = packetbuff, .cmd_code = cmd_can_rxframe, .data_len = 15};
+  uint8_t buffer[IN_PACKETSIZE * 2] = {0};
+  packet_t tx_packet = {};
   chRegSetThreadName("can receiver");
   chEvtRegister(&CAND1.rxfull_event, &el, 0);
 
@@ -137,13 +136,11 @@ static THD_FUNCTION(can_rx, p) {
       continue;
     }
     while (canReceive(&CAND1, CAN_ANY_MAILBOX, &rxmsg, TIME_IMMEDIATE) == MSG_OK ) {
-      packetbuff[0] = rxmsg.std.SID & 0xFF;
-      packetbuff[1] = (rxmsg.std.SID >> 8) & 0xFF;
-      packetbuff[2] = (rxmsg.std.SID >> 16) & 0xFF;
-      packetbuff[3] = (rxmsg.std.SID >> 24) & 0xFF;
-      packetbuff[12] = rxmsg.DLC;
-      memcpy(packetbuff + 4, rxmsg.data8, rxmsg.DLC);
+      rx_can_msg(&rxmsg, &tx_packet);
       size = CombiSendPacket(&tx_packet, buffer);
+      if (!(((USBDriver*)&USBD1)->state == USB_ACTIVE)) {
+            continue;
+      }
       usb_send(&USBD1, EP_IN, buffer, size);
     }
   }
@@ -190,9 +187,6 @@ int main(void) {
   chThdSleepMilliseconds(1000);
   usbStart(&USBD1, &usb_config);
   usbConnectBus(&USBD1);
-
-  initCAN1();
-  rccDisableFDCAN();
 
   chThdCreateStatic(usb_rx_wa, sizeof(usb_rx_wa), NORMALPRIO + 7, usb_rx, NULL);
   chThdCreateStatic(combi_wa, sizeof(combi_wa), NORMALPRIO + 7, combi, NULL);
