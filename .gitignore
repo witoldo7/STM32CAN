@@ -1,6 +1,6 @@
 # Compiled source #
 ###################
 .dep
-build/
+firmware/build/
 *.o
 *.so
