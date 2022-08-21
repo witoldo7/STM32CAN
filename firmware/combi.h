@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: Apache-2.0
+
+/* 
+ * STM32CAN Firmware.
+ * Copyright (c) 2022 Witold Olechowski.
+ * 
+ */ 
+
 #ifndef __COMBI_H__
 #define __COMBI_H__
 

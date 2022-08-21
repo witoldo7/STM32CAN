@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
+
 /* 
- * SocketCAN driver for CombiAdapter/WQCAN.
- * Copyright (c) 2022 Witold Olechowski
+ * WQCAN J2534 API Library.
+ * Copyright (c) 2022 Witold Olechowski.
  * 
  */ 
 

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* SocketCAN driver for CombiAdapter/WQCAN.
+
+/* SocketCAN driver for WQCAN.
  *
  * Copyright (C) 2022 Witold Olechowski
  *
- * This driver is inspired by the net/can/usb/wqcan_usb.c
+ * This driver is inspired by the net/can/usb/mcba_usb.c
  */
 
 #include <asm/unaligned.h>
@@ -987,5 +988,5 @@ static struct usb_driver wqcan_usb_driver = {
 module_usb_driver(wqcan_usb_driver);
 
 MODULE_AUTHOR("Witold Olechowski <witusio@gmail.com>");
-MODULE_DESCRIPTION("SocketCAN driver for STM32CAN");
+MODULE_DESCRIPTION("SocketCAN driver for WQCAN");
 MODULE_LICENSE("GPL v2");

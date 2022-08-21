@@ -1,7 +1,8 @@
 ﻿// SPDX-License-Identifier: MIT
+
 /* 
- * SocketCAN driver for CombiAdapter/WQCAN.
- * Copyright (c) 2022 Witold Olechowski
+ * WQCAN J2534 API Library.
+ * Copyright (c) 2022 Witold Olechowski.
  * 
  */ 
 
@@ -190,11 +191,25 @@ long PTAPI PassThruIoctl(unsigned long ChannelID, unsigned long ioctlID, void *p
 	long err = ERR_NOT_SUPPORTED;
 	switch(ioctlID) {
 		case GET_CONFIG:
+			const SCONFIG_LIST *inputlist = pInput;
+			break;
 		case SET_CONFIG:
+			const SCONFIG_LIST *inputlist = pInput;
 			break;
 		case READ_VBATT:
 			*(uint32_t*)pOutput = 14400;
 			err = STATUS_NOERROR;
+			break;
+		case FIVE_BAUD_INIT:
+		case FAST_INIT:
+		case CLEAR_TX_BUFFER:
+		case CLEAR_RX_BUFFER:
+		case CLEAR_PERIODIC_MSGS:
+		case CLEAR_MSG_FILTERS:
+		case CLEAR_FUNCT_MSG_LOOKUP_TABLE:
+		case ADD_TO_FUNCT_MSG_LOOKUP_TABLE:
+		case DELETE_FROM_FUNCT_MSG_LOOKUP_TABLE:
+		case READ_PROG_VOLTAGE:
 			break;
 		
 	}

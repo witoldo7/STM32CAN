@@ -1,2 +1,1 @@
-# STM32CAN
-Trionic 5, 7, 8 flasher interface.
+## STM32CAN Firmware
