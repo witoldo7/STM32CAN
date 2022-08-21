@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: Apache-2.0
+
+/* 
+ * STM32CAN Firmware.
+ * Copyright (c) 2022 Witold Olechowski.
+ * 
+ */ 
+
 #include "hal.h"
 #include <stdio.h>
 #include "combi.h"
@@ -5,63 +13,124 @@
 #include "usbcombi.h"
 #include "bdm.h"
 #include "bdmcpu32.h"
+#include <utils.h>
 
-void swab(uint16_t *word);
 bool readflash(LONG start_addr, LONG size);
 bool writeflash(char *flash_type, LONG start_addr, LONG size);
 
 uint8_t version[2] = {0x03, 0x01};
 uint8_t egt_temp[5] = {0};
-CANTxFrame txmsg = {.IDE = CAN_IDE_STD, .RTR = CAN_RTR_DATA};
-CANFilter filter[28] = {};
-CAN_bit_timing_t can_configs[3] = {{1, 8, 105}, {1, 8, 98}, {1, 8, 6}};
+uint8_t packetbuff[80] = {0};
+bool combi_mode = true;
 
-void set_can_filter(CANDriver *can, uint8_t* data) {
-  uint8_t j = 0, id, id1, id2, id3;
-  if (can == &CAND2) {
-    j += 0xE;
-  }
-  for (uint8_t i = 0; i < data[0]; i = i + 4, j++) {
-    filter[j].filter = j;
-    filter[j].mode = 1;
-    filter[j].scale = 0;
-    filter[j].assignment = 0;
-    switch (data[0] - i) {
-    case 1:
-      id = (uint16_t)data[1 + i] | (uint16_t)(data[2 + i] << 8);
-      filter[j].register1 = (id << 5) | 0b010;
-      filter[j].register2 = 0;
-      break;
-    case 2:
-      id = (uint16_t)data[1 + i] | (uint16_t)(data[2 + i] << 8);
-      id1 = (uint16_t)data[3 + i] | (uint16_t)(data[4 + i] << 8);
-      filter[j].register1 = (((id << 5) | 0b010) << 16) | ((id1 << 5) | 0b010);
-      filter[j].register2 = 0;
-      break;
-    case 3:
-      id = (uint16_t)data[1 + i] | (uint16_t)(data[2 + i] << 8);
-      id1 = (uint16_t)data[3 + i] | (uint16_t)(data[4 + i] << 8);
-      id2 = (uint16_t)data[5 + i] | (uint16_t)(data[6 + i] << 8);
-      filter[j].register1 = (((id << 5) | 0b010) << 16) | ((id1 << 5) | 0b010);
-      filter[j].register2 = ((id2 << 5) | 0b010);
-      break;
-    case 4:
-      id = (uint16_t)data[1 + i] | (uint16_t)(data[2 + i] << 8);
-      id1 = (uint16_t)data[3 + i] | (uint16_t)(data[4 + i] << 8);
-      id2 = (uint16_t)data[5 + i] | (uint16_t)(data[6 + i] << 8);
-      id3 = (uint16_t)data[7 + i] | (uint16_t)(data[8 + i] << 8);
-      filter[j].register1 = (((id << 5) | 0b010) << 16) | ((id1 << 5) | 0b010);
-      filter[j].register2 = (((id2 << 5) | 0b010) << 16) | ((id3 << 5) | 0b010);
-      break;
-    }
-  }
-  canSTM32SetFilters(can, 0xE, j, &filter[0]);
-}
+const uint32_t CvtEltSize[] = {0, 0, 0, 0, 0, 1, 2, 3, 4, 0, 5, 0, 0, 0, 6, 0, 0, 0, 7};
+CANTxFrame txmsg = {};
 
-bool set_can_bitrate(BITRATE bitrate) {
-  CAN1->BTR = CAN_BTR_SJW(0) | CAN_BTR_TS2(can_configs[bitrate].TS2)
-      | CAN_BTR_TS1(can_configs[bitrate].TS1) | CAN_BTR_BRP(can_configs[bitrate].BRP);
-  return true;
+CAN_RamAddress can1_ram;
+
+CAN_Filter filter0 = {
+  .IdType = FDCAN_STANDARD_ID,
+  .FilterIndex = 0,
+  .FilterType = FDCAN_FILTER_DUAL,
+  .FilterConfig = FDCAN_FILTER_TO_RXFIFO0,
+  .FilterID1 = 0x7E8,
+  .FilterID2 = 0x7E0,
+};
+
+CAN_Filter filter1 = {
+  .IdType = FDCAN_STANDARD_ID,
+  .FilterIndex = 1,
+  .FilterType = FDCAN_FILTER_DUAL,
+  .FilterConfig = FDCAN_FILTER_TO_RXFIFO0,
+  .FilterID1 = 0x5E8,
+  .FilterID2 = 0x311,
+};
+
+CAN_Filter filter2 = {
+  .IdType = FDCAN_STANDARD_ID,
+  .FilterIndex = 2,
+  .FilterType = FDCAN_FILTER_MASK,
+  .FilterConfig = FDCAN_FILTER_TO_RXFIFO0,
+  .FilterID1 = 0x011,
+  .FilterID2 = 0x7FF,
+};
+
+CANRamConfig can1_ram_cfg = {
+  .MessageRAMOffset = 0,
+  .StdFiltersNbr = 4,
+  .ExtFiltersNbr = 0,
+  .RxFifo0ElmtsNbr = 4,
+  .RxFifo0ElmtSize = FDCAN_DATA_BYTES_64,
+  .RxFifo1ElmtsNbr = 4,
+  .RxFifo1ElmtSize = FDCAN_DATA_BYTES_64,
+  .RxBuffersNbr = 4,
+  .RxBufferSize = FDCAN_DATA_BYTES_64,
+  .TxEventsNbr = 1,
+  .TxBuffersNbr = 4,
+  .TxFifoQueueElmtsNbr = 4,
+  .TxElmtSize = FDCAN_DATA_BYTES_64
+};
+
+static CANConfig canConfig1 = {
+  .DBTP =  0,
+  .CCCR =  0, //FDCAN_CCCR_TEST,
+  .TEST =  0, //FDCAN_TEST_LBCK,
+};
+
+static CANConfig canConfig2 = {
+  .DBTP = 0,
+  .CCCR =  0, //FDCAN_CCCR_TEST,
+  .TEST =  0, //FDCAN_TEST_LBCK,
+  .RXF0C = (32 << FDCAN_RXF0C_F0S_Pos) | (384 << FDCAN_RXF0C_F0SA_Pos),
+  .RXF1C = (32 << FDCAN_RXF1C_F1S_Pos) | (512 << FDCAN_RXF1C_F1SA_Pos),
+  .TXBC  = (32 << FDCAN_TXBC_TFQS_Pos) | (640 << FDCAN_TXBC_TBSA_Pos),
+  .TXESC = 0x000, // 8 Byte mode only (4 words per message)
+  .RXESC = 0x000 // 8 Byte mode only (4 words per message)
+};
+
+void rx_can_msg(CANRxFrame *rxmsg, packet_t *packet) {
+  packet->data = packetbuff;
+  if (rxmsg->common.XTD) {
+    packetbuff[0] = rxmsg->ext.EID & 0xFF;
+    packetbuff[1] = (rxmsg->ext.EID >> 8) & 0xFF;
+    packetbuff[2] = (rxmsg->ext.EID >> 16) & 0xFF;
+    packetbuff[3] = (rxmsg->ext.EID >> 24) & 0xFF;
+  } else {
+    packetbuff[0] = rxmsg->std.SID & 0xFF;
+    packetbuff[1] = (rxmsg->std.SID >> 8) & 0xFF;
+    packetbuff[2] = (rxmsg->std.SID >> 16) & 0xFF;
+  }
+  if (combi_mode) {
+    packetbuff[12] = rxmsg->DLC;
+    packetbuff[13] = rxmsg->common.XTD;
+    packetbuff[14] = rxmsg->common.RTR;
+    memcpy(packetbuff + 4, rxmsg->data8, rxmsg->DLC);
+    packet->cmd_code = cmd_can_rxframe;
+    packet->data_len = 15;
+  } else {
+    /* data[0:3] - SID or EID
+     * data[4]
+     *    b0 - XTD
+     *    b1 - RTR
+     *    b2 - ESI
+     *    b3 - BRS
+     *    b4 - FDF
+     *    b4 - ANMF
+     * data[5] - FIDX
+     * data[6:7] - RXTS
+     * data[8] - DLC
+     * data[9:9+DLC] - data
+     */
+    packetbuff[4] = (rxmsg->common.XTD) | (rxmsg->common.RTR << 1) | (rxmsg->common.ESI << 2)
+                    | (rxmsg->BRS << 3) | (rxmsg->FDF << 4) | (rxmsg->ANMF << 5);
+    packetbuff[5] = rxmsg->FIDX;
+    packetbuff[6] = rxmsg->RXTS & 0xFF;
+    packetbuff[7] = (rxmsg->RXTS >> 8) & 0xFF;
+    packetbuff[8] = rxmsg->DLC;
+    memcpy(packetbuff + 9, rxmsg->data8, can_fd_dlc2len(rxmsg->DLC));
+    packet->cmd_code = cmd_can_rxframe_fdcan;
+    packet->data_len = 73;
+  }
 }
 
 bool exec_cmd_swcan(packet_t *rx_packet, packet_t *tx_packet) {
@@ -69,32 +138,43 @@ bool exec_cmd_swcan(packet_t *rx_packet, packet_t *tx_packet) {
   case cmd_swcan_open:
     if (rx_packet->data_len == 1) {
       if (*rx_packet->data != 0x1) {
-        rccDisableCAN2();
+        canStop(&CAND2);
         return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
       }
-      rccEnableCAN2(true);
+      canBaudRate(&canConfig2, 500000);
+      canStart(&CAND2, &canConfig2);
       return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
     }
     break;
+
+  case cmd_swcan_bitrate:
+    if (rx_packet->data_len == 4) {
+      uint32_t bitrate = rx_packet->data[3] | (uint32_t)*rx_packet->data << 0x18 | (uint32_t)rx_packet->data[1] << 0x10
+          | (uint32_t)rx_packet->data[2] << 8;
+
+      return canBaudRate(&canConfig2, bitrate) && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+    }
+   break;
+
   case cmd_swcan_txframe:
     if (rx_packet->data_len != 15) {
       return false;
     }
-    txmsg.SID = (uint32_t)rx_packet->data[0]
-        | (uint32_t)(rx_packet->data[1] << 8)
-        | (uint32_t)(rx_packet->data[2] << 16)
-        | (uint32_t)(rx_packet->data[3] << 24);
+    txmsg.std.SID = ((uint32_t)rx_packet->data[0] | (uint32_t)(rx_packet->data[1] << 8)
+        | (uint32_t)(rx_packet->data[2] << 16)) & 0x7FF;
     txmsg.DLC = rx_packet->data[12];
     memcpy(txmsg.data8, rx_packet->data + 4, rx_packet->data[12]);
 
     return (canTransmit(&CAND2, CAN_ANY_MAILBOX, &txmsg, TIME_MS2I(100)) == MSG_OK )
         && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+  break;
+
   case cmd_swcan_filter:
     if (*rx_packet->data == 0x0) {
       return false;
     }
-    set_can_filter(&CAND2, rx_packet->data);
-    rccEnableCAN2(true);
+    //set_can_filter(&CAND2, rx_packet->data);
+    break;
   }
   return false;
 }
@@ -103,54 +183,169 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
   switch (rx_packet->cmd_code) {
   case cmd_can_ecuconnect:
     return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+
   case cmd_can_filter:
     if (rx_packet->data_len != 0 && rx_packet->data_len <= 8) {
       if (*rx_packet->data == 0x0) {
         return false;
       }
-      set_can_filter(&CAND1, rx_packet->data);
-      rccEnableCAN1(true);
+      //set_can_filter(&CAND1, rx_packet->data);
     }
     return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+
   case cmd_can_open:
-    if (rx_packet->data_len == 1) {
-      if (*rx_packet->data != 0x1) {
-        rccDisableCAN1();
-        return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+    switch (rx_packet->data[0]) {
+    case combi_close:
+      canStop(&CAND1);
+      break;
+    case combi_open:
+      combi_mode = true;
+      canBaudRate(&canConfig1, 500000);
+      canMemorryConfig(&CAND1, &canConfig1, &can1_ram_cfg, &can1_ram);
+      canGlobalFilter(&canConfig1, FDCAN_REJECT, FDCAN_REJECT, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
+      canStart(&CAND1, &canConfig1);
+      //Combilib + Trionic 8 filters
+      canFilter(&can1_ram, &filter0);
+      canFilter(&can1_ram, &filter1);
+      canFilter(&can1_ram, &filter2);
+      break;
+    case fdcan_open:
+      combi_mode = false;
+      canConfig1.CCCR = 0;
+      canConfig1.TEST = 0;
+      canConfig1.TXESC = CvtEltSize[can1_ram_cfg.TxElmtSize]; // 8 Byte mode only (4 words per message)
+      canConfig1.RXESC = CvtEltSize[can1_ram_cfg.RxFifo0ElmtSize] << FDCAN_RXESC_F0DS_Pos | CvtEltSize[can1_ram_cfg.RxFifo1ElmtSize] << FDCAN_RXESC_F1DS_Pos
+             | CvtEltSize[can1_ram_cfg.RxBufferSize] << FDCAN_RXESC_RBDS_Pos;// 8 Byte mode only (4 words per message)
+      uint32_t mode = rx_packet->data[4] | (uint32_t)rx_packet->data[1] << 24 | (uint32_t)rx_packet->data[2] << 16
+          | (uint32_t)rx_packet->data[3] << 8;
+      /* NISO support */
+      if (mode& CAN_CTRLMODE_FD_NON_ISO) {
+        canConfig1.CCCR |= FDCAN_CCCR_NISO;
       }
-      rccEnableCAN1(true);
-      return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+
+      /* FDCAN mode */
+      if (mode & CAN_CTRLMODE_FD) {
+        canConfig1.CCCR |= (FDCAN_CCCR_BRSE | FDCAN_CCCR_FDOE);
+      }
+
+      /* Loopback Mode */
+      if (mode & CAN_CTRLMODE_LOOPBACK) {
+        canConfig1.CCCR |= FDCAN_CCCR_TEST | FDCAN_CCCR_MON;
+        canConfig1.TEST |= FDCAN_TEST_LBCK;
+      }
+
+      /* Enable Monitoring */
+      if (mode & CAN_CTRLMODE_LISTENONLY) {
+        canConfig1.CCCR |= FDCAN_CCCR_MON;
+      }
+
+      /* Disable Auto Retransmission */
+      if (mode & CAN_CTRLMODE_ONE_SHOT) {
+        canConfig1.CCCR |= FDCAN_CCCR_DAR;
+      }
+      canMemorryConfig(&CAND1, &canConfig1, &can1_ram_cfg, &can1_ram);
+      //canGlobalFilter(&canConfig1, FDCAN_REJECT, FDCAN_REJECT, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
+      canStart(&CAND1, &canConfig1);
+      can1_ram.ExtendedFilterSA = 0;
+      can1_ram.StandardFilterSA = 0;
+      break;
+    default:
+      return false;
     }
+    return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
     break;
+
   case cmd_can_bitrate:
-    if (rx_packet->data_len == 4) {
+    switch (rx_packet->data_len) {
+    case 4:
       uint32_t bitrate = rx_packet->data[3] | (uint32_t)*rx_packet->data << 0x18 | (uint32_t)rx_packet->data[1] << 0x10
           | (uint32_t)rx_packet->data[2] << 8;
-      switch (bitrate) {
-      case 500000:
-        set_can_bitrate(CAN_500KBPS);
-        break;
-      case 47619:
-        set_can_bitrate(CAN_47KBPS);
-        break;
-      default:
-        return false;
+      bool ret = canBaudRate(&canConfig1, bitrate);
+      if (ret) {
+        canStop(&CAND1);
+        canStart(&CAND1, &canConfig1);
       }
-      return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+      return ret && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+      break;
+    case 5:
+      canStop(&CAND1);
+      if (rx_packet->data[0] == 0) {
+        canConfig1.NBTP = rx_packet->data[4] | (uint32_t)rx_packet->data[1] << 24 | (uint32_t)rx_packet->data[2] << 16
+            | (uint32_t)rx_packet->data[3] << 8;
+      } else {
+        canConfig1.DBTP = rx_packet->data[4] | (uint32_t)rx_packet->data[1] << 24 | (uint32_t)rx_packet->data[2] << 16
+            | (uint32_t)rx_packet->data[3] << 8;
+      }
+      break;
+    case 9:
+        canConfig1.DBTP = rx_packet->data[4] | (uint32_t)rx_packet->data[1] << 24 | (uint32_t)rx_packet->data[2] << 16
+            | (uint32_t)rx_packet->data[3] << 8;
+        canConfig1.TDCR = rx_packet->data[8] | (uint32_t)rx_packet->data[5] << 24 | (uint32_t)rx_packet->data[6] << 16
+            | (uint32_t)rx_packet->data[7] << 8;
+      break;
+    default:
+      return false;
     }
+    canStart(&CAND1, &canConfig1);
+    CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
     break;
+
   case cmd_can_txframe:
     if (rx_packet->data_len != 15) {
       return false;
     }
-    txmsg.SID = (uint32_t)rx_packet->data[0] | (uint32_t)(rx_packet->data[1] << 8)
-        | (uint32_t)(rx_packet->data[2] << 16) | (uint32_t)(rx_packet->data[3] << 24);
+    if (rx_packet->data[13] == 1) {
+      txmsg.ext.EID = (uint32_t)rx_packet->data[0] | (uint32_t)(rx_packet->data[1] << 8)
+          | (uint32_t)(rx_packet->data[2] << 16) | (uint32_t)(rx_packet->data[3] << 24);
+      txmsg.common.XTD = true;
+    } else {
+      txmsg.std.SID = ((uint32_t)rx_packet->data[0] | (uint32_t)(rx_packet->data[1] << 8)
+          | (uint32_t)(rx_packet->data[2] << 16)) & 0x7FF;
+    }
     txmsg.DLC = rx_packet->data[12];
-    memcpy(txmsg.data8, rx_packet->data + 4, rx_packet->data[12]);
+    txmsg.common.RTR = rx_packet->data[14];
+    memcpy(txmsg.data8, rx_packet->data + 4, can_fd_dlc2len(rx_packet->data[12]));
 
     return (canTransmit(&CAND1, CAN_ANY_MAILBOX, &txmsg, TIME_MS2I(100)) == MSG_OK )
         && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+
+  /* data[0:3] - SID or EID
+   * data[4]
+   *    b0 - XTD
+   *    b1 - RTR
+   *    b2 - ESI
+   *    b3 - BRS
+   *    b4 - FDF
+   *    b5 - EFC
+   * data[5] - MM
+   * data[6] - DLC
+   * data[7:7+DLC] - data
+   */
+  case cmd_can_txframe_fdcan:
+    uint8_t flags = rx_packet->data[4];
+    if (flags & 0b00000001) {
+      txmsg.ext.EID = (uint32_t)rx_packet->data[0] | (uint32_t)(rx_packet->data[1] << 8)
+          | (uint32_t)(rx_packet->data[2] << 16) | (uint32_t)(rx_packet->data[3] << 24);
+      txmsg.common.XTD = true;
+    } else {
+      txmsg.std.SID = ((uint32_t)rx_packet->data[0] | (uint32_t)(rx_packet->data[1] << 8)
+          | (uint32_t)(rx_packet->data[2] << 16)) & 0x7FF;
+    }
+    txmsg.MM = rx_packet->data[5];
+    txmsg.DLC = rx_packet->data[6];
+    txmsg.common.RTR = (flags >> 1) & 0x00000001;
+    txmsg.common.ESI = (flags >> 2) & 0x00000001;
+    txmsg.BRS = (flags >> 3) & 0x00000001;
+    txmsg.FDF = (flags >> 4) & 0x00000001;
+    txmsg.EFC = (flags >> 5) & 0x00000001;
+
+    memcpy(txmsg.data8, rx_packet->data + 7, can_fd_dlc2len(rx_packet->data[6]));
+
+    return (canTransmit(&CAND1, CAN_ANY_MAILBOX, &txmsg, TIME_MS2I(100)) == MSG_OK )
+        && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+    break;
   }
+
   return false;
 }
 
@@ -169,8 +364,7 @@ bool exec_cmd_board(packet_t *rx_packet, packet_t *tx_packet) {
 }
 
 bool CombiSendReplyPacket(packet_t *reply, packet_t *source, uint8_t *data,
-uint16_t data_len,
-                          uint8_t term) {
+                          uint16_t data_len, uint8_t term) {
   if ((reply == (packet_t*)0x0) || (source == (packet_t*)0x0)) {
     return false;
   }
@@ -475,14 +669,4 @@ bool writeflash(char *flash_type, LONG start_addr, LONG size) {
 
   // reset flash
   return (reset_func() && status);
-}
-
-void swab(uint16_t *word) {
-  uint16_t tmp;
-  if (word != 0) {
-    tmp = *word;
-    *word = *word << 8;
-    *word = tmp >> 8 | *word;
-  }
-  return;
 }

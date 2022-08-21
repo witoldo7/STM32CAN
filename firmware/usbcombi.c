@@ -1,5 +1,12 @@
-#include "usbcombi.h"
+// SPDX-License-Identifier: Apache-2.0
 
+/* 
+ * STM32CAN Firmware.
+ * Copyright (c) 2022 Witold Olechowski.
+ * 
+ */ 
+
+#include "usbcombi.h"
 #include "hal.h"
 
 bool isReady = false;
