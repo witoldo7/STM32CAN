@@ -359,6 +359,10 @@ bool exec_cmd_board(packet_t *rx_packet, packet_t *tx_packet) {
     return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
   case cmd_brd_egt:
     return CombiSendReplyPacket(tx_packet, rx_packet, egt_temp, 5, cmd_term_ack);
+  case cmd_brd_vbat:
+    uint8_t vbat[4] = {0};
+    get_vbat(vbat);
+    return CombiSendReplyPacket(tx_packet, rx_packet, vbat, 2, cmd_term_ack);
   }
   return false;
 }

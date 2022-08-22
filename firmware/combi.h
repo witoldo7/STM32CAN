@@ -19,6 +19,7 @@ enum combi_command_t {
   cmd_brd_adcfilter = 0x21,
   cmd_brd_adc = 0x22,
   cmd_brd_egt = 0x23,
+  cmd_brd_vbat = 0x24,
   //BDM
   cmd_bdm_stop_chip = 0x40,
   cmd_bdm_reset_chip = 0x41,

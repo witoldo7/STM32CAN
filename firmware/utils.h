@@ -98,6 +98,7 @@ typedef struct {
 } CANRamConfig;
 
 void swab(uint16_t *word);
+void get_vbat(uint8_t *vbat);
 uint8_t can_fd_dlc2len(uint8_t dlc);
 bool canBaudRate(CANConfig *can_cfg, uint32_t can_baudrate);
 bool canMemorryConfig(CANDriver *canp, CANConfig *can_cfg, CANRamConfig *cfg, CAN_RamAddress *msgRam);

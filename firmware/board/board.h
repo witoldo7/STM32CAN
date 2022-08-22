@@ -96,7 +96,7 @@
 #define PA15                           15U
 
 #define PB00                           0U
-#define PB01                           1U
+#define PB01_VBAT                           1U
 #define PB02_QSPI_CLK                  2U
 #define PB03                           3U
 #define PB04                           4U
@@ -391,7 +391,7 @@
                      PIN_AFIO_AF(PA15, 0))
 
 #define VAL_GPIOB_MODER                 (PIN_MODE_INPUT(PB00) | \
-                     PIN_MODE_INPUT(PB01) | \
+                     PIN_MODE_ANALOG(PB01_VBAT) | \
                      PIN_MODE_ALTERNATE(PB02_QSPI_CLK) | \
                      PIN_MODE_INPUT(PB03) | \
                      PIN_MODE_INPUT(PB04) | \
@@ -408,7 +408,7 @@
                      PIN_MODE_INPUT(PB15))
 
 #define VAL_GPIOB_OTYPER                (PIN_OTYPE_PUSHPULL(PB00) | \
-                     PIN_OTYPE_PUSHPULL(PB01) | \
+                     PIN_OTYPE_PUSHPULL(PB01_VBAT) | \
                      PIN_OTYPE_PUSHPULL(PB02_QSPI_CLK) | \
                      PIN_OTYPE_PUSHPULL(PB03) | \
                      PIN_OTYPE_PUSHPULL(PB04) | \
@@ -425,7 +425,7 @@
                      PIN_OTYPE_PUSHPULL(PB15))
 
 #define VAL_GPIOB_OSPEEDR               (PIN_OSPEED_SPEED_VERYLOW(PB00) | \
-                     PIN_OSPEED_SPEED_VERYLOW(PB01) | \
+                     PIN_OSPEED_SPEED_HIGH(PB01_VBAT) | \
                      PIN_OSPEED_SPEED_HIGH(PB02_QSPI_CLK) | \
                      PIN_OSPEED_SPEED_VERYLOW(PB03) | \
                      PIN_OSPEED_SPEED_VERYLOW(PB04) | \
@@ -442,7 +442,7 @@
                      PIN_OSPEED_SPEED_VERYLOW(PB15))
 
 #define VAL_GPIOB_PUPDR                 (PIN_PUPDR_PULLDOWN(PB00) | \
-                     PIN_PUPDR_PULLDOWN(PB01) | \
+                     PIN_PUPDR_FLOATING(PB01_VBAT) | \
                      PIN_PUPDR_FLOATING(PB02_QSPI_CLK) | \
                      PIN_PUPDR_PULLDOWN(PB03) | \
                      PIN_PUPDR_PULLDOWN(PB04) | \
@@ -459,7 +459,7 @@
                      PIN_PUPDR_PULLDOWN(PB15))
 
 #define VAL_GPIOB_ODR                   (PIN_ODR_LEVEL_LOW(PB00) | \
-                     PIN_ODR_LEVEL_LOW(PB01) | \
+                     PIN_ODR_LEVEL_HIGH(PB01_VBAT) | \
                      PIN_ODR_LEVEL_HIGH(PB02_QSPI_CLK) | \
                      PIN_ODR_LEVEL_LOW(PB03) | \
                      PIN_ODR_LEVEL_LOW(PB04) | \
@@ -476,7 +476,7 @@
                      PIN_ODR_LEVEL_LOW(PB15))
 
 #define VAL_GPIOB_AFRL          (PIN_AFIO_AF(PB00, 0) | \
-                     PIN_AFIO_AF(PB01, 0) | \
+                     PIN_AFIO_AF(PB01_VBAT, 0) | \
                      PIN_AFIO_AF(PB02_QSPI_CLK, 9) | \
                      PIN_AFIO_AF(PB03, 0) | \
                      PIN_AFIO_AF(PB04, 0) | \

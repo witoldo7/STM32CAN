@@ -191,6 +191,8 @@ int main(void) {
   chSemObjectInit(&rxSem, 1);
   chSemObjectInit(&processSem, 1);
 
+  adcStart(&ADCD1, NULL);
+
   usbDisconnectBus(&USBD1);
   chThdSleepMilliseconds(1000);
   usbStart(&USBD1, &usb_config);
