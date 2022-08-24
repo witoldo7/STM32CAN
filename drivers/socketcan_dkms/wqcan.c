@@ -11,7 +11,6 @@
 #include <linux/can.h>
 #include <linux/can/dev.h>
 #include <linux/can/error.h>
-#include <linux/can/led.h>
 #include <linux/module.h>
 #include <linux/netdevice.h>
 #include <linux/signal.h>
@@ -286,7 +285,6 @@ static void wqcan_usb_write_bulk_callback(struct urb *urb)
 		netdev->stats.tx_bytes += can_get_echo_skb(netdev, ctx->ndx,
 							   NULL);
 
-		can_led_event(netdev, CAN_LED_EVENT_TX);
 	}
 
 	if (urb->status)
@@ -560,7 +558,6 @@ static void wqcan_usb_process_can(struct wqcan_priv *priv,
 	
 	stats->rx_packets++;
 
-	can_led_event(priv->netdev, CAN_LED_EVENT_RX);
 	netif_rx(skb);
 }
 
@@ -734,7 +731,6 @@ static int wqcan_usb_open(struct net_device *netdev)
 	priv->can_speed_check = true;
 	priv->can.state = CAN_STATE_ERROR_ACTIVE;
 
-	can_led_event(netdev, CAN_LED_EVENT_OPEN);
 	netif_start_queue(netdev);
 
 	return 0;
@@ -766,7 +762,6 @@ static int wqcan_usb_close(struct net_device *netdev)
 	wqcan_urb_unlink(priv);
 
 	close_candev(netdev);
-	can_led_event(netdev, CAN_LED_EVENT_STOP);
 
 	return 0;
 }
@@ -937,8 +932,6 @@ static int wqcan_usb_probe(struct usb_interface *intf,
 
 		goto cleanup_free_candev;
 	}
-
-	devm_can_led_init(netdev);
 
 	/* Start USB dev only if we have successfully registered CAN device */
 	err = wqcan_usb_start(priv);
