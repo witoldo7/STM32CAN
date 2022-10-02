@@ -101,7 +101,7 @@
 #define STM32_PLL2_DIVM_VALUE               5
 #define STM32_PLL2_DIVN_VALUE               192
 #define STM32_PLL2_FRACN_VALUE              0
-#define STM32_PLL2_DIVP_VALUE               2
+#define STM32_PLL2_DIVP_VALUE               16
 #define STM32_PLL2_DIVQ_VALUE               12
 #define STM32_PLL2_DIVR_VALUE               2
 #define STM32_PLL3_ENABLED                  TRUE
@@ -226,7 +226,7 @@
  */
 #define STM32_ADC_DUAL_MODE                 FALSE
 #define STM32_ADC_SAMPLES_SIZE              16
-#define STM32_ADC_USE_ADC12                 FALSE
+#define STM32_ADC_USE_ADC12                 TRUE
 #define STM32_ADC_USE_ADC3                  FALSE
 #define STM32_ADC_ADC12_DMA_STREAM          STM32_DMA_STREAM_ID_ANY
 #define STM32_ADC_ADC3_BDMA_STREAM          STM32_BDMA_STREAM_ID_ANY
@@ -234,8 +234,8 @@
 #define STM32_ADC_ADC3_DMA_PRIORITY         2
 #define STM32_ADC_ADC12_IRQ_PRIORITY        5
 #define STM32_ADC_ADC3_IRQ_PRIORITY         5
-#define STM32_ADC_ADC12_CLOCK_MODE          ADC_CCR_CKMODE_AHB_DIV4
-#define STM32_ADC_ADC3_CLOCK_MODE           ADC_CCR_CKMODE_AHB_DIV4
+#define STM32_ADC_ADC12_CLOCK_MODE          ADC_CCR_CKMODE_ADCCK
+#define STM32_ADC_ADC3_CLOCK_MODE           ADC_CCR_CKMODE_ADCCK
 
 /*
  * CAN driver system settings.

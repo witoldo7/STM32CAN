@@ -8,7 +8,62 @@
 
 #include <utils.h>
 #include "hal.h"
+#include "string.h"
 
+//------------------------ADC-BEGIN-------------------------
+
+#define ADC_GRP1_NUM_CHANNELS       1
+#define ADC_GRP1_BUF_DEPTH      1
+
+/* Buffers are allocated with size and address aligned to the cache
+   line size.*/
+#if CACHE_LINE_SIZE > 0
+CC_ALIGN_DATA(CACHE_LINE_SIZE)
+#endif
+adcsample_t samples1[CACHE_SIZE_ALIGN(adcsample_t, ADC_GRP1_NUM_CHANNELS * ADC_GRP1_BUF_DEPTH)];
+
+/*
+ * ADC conversion group 1.
+ * Mode:        One shot, 1 channel, SW triggered.
+ * Channels:    IN5.
+ */
+const ADCConversionGroup adcgrpcfg1 = {
+  .circular     = false,
+  .num_channels = ADC_GRP1_NUM_CHANNELS,
+  .end_cb       = NULL,
+  .error_cb     = NULL,
+  .cfgr         = 0U,
+  .cfgr2        = 0U,
+  .ccr          = 0U,
+  .pcsel        = ADC_SELMASK_IN5,
+  .ltr1         = 0x00000000U,
+  .htr1         = 0x03FFFFFFU,
+  .ltr2         = 0x00000000U,
+  .htr2         = 0x03FFFFFFU,
+  .ltr3         = 0x00000000U,
+  .htr3         = 0x03FFFFFFU,
+  .smpr         = {
+    ADC_SMPR1_SMP_AN5(ADC_SMPR_SMP_810P5),
+    0U
+  },
+  .sqr          = {
+    ADC_SQR1_SQ1_N(ADC_CHANNEL_IN5),
+    0U,
+    0U,
+    0U
+  }
+};
+
+void get_vbat(uint8_t *vbat) {
+  uint16_t voltage = 0;
+  adcConvert(&ADCD1, &adcgrpcfg1, samples1, ADC_GRP1_BUF_DEPTH);
+  voltage = samples1[0] / 3;
+  cacheBufferInvalidate(samples1, sizeof (samples1) / sizeof (adcsample_t));
+  memcpy(vbat, &voltage, 2);
+}
+//------------------------ADC-END-----------------------------
+
+//------------------------FDCAN-BEGIN-----------------------------
 #define FDCAN_MESSAGE_RAM_SIZE 0x2800U
 #define FDCAN_MESSAGE_RAM_END_ADDRESS (SRAMCAN_BASE + FDCAN_MESSAGE_RAM_SIZE - 0x4U)
 
@@ -19,16 +74,6 @@ static const uint8_t dlc2len[] = {
 
 uint8_t can_fd_dlc2len(uint8_t dlc) {
   return dlc2len[dlc & 0x0F];
-}
-
-void swab(uint16_t *word) {
-  uint16_t tmp;
-  if (word != 0) {
-    tmp = *word;
-    *word = *word << 8;
-    *word = tmp >> 8 | *word;
-  }
-  return;
 }
 
 void canFilter(CAN_RamAddress *msgRam, CAN_Filter *filter) {
@@ -226,4 +271,17 @@ bool canBaudRate(CANConfig *can_cfg, uint32_t can_baudrate) {
   can_cfg->CCCR = FDCAN_CCCR_FDOE | FDCAN_CCCR_BRSE;
 
   return true;
+}
+
+//------------------------FDCAN-END-----------------------------
+
+//-------------------------OTHERS-------------------------------
+void swab(uint16_t *word) {
+  uint16_t tmp;
+  if (word != 0) {
+    tmp = *word;
+    *word = *word << 8;
+    *word = tmp >> 8 | *word;
+  }
+  return;
 }

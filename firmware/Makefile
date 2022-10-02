@@ -91,7 +91,7 @@ endif
 PROJECT = canadapter
 
 # Imported source files and paths
-CHIBIOS = ../ChibiOS
+CHIBIOS = ../../ChibiOS
 
 # Licensing files.
 include $(CHIBIOS)/os/license/license.mk
