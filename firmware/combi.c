@@ -26,7 +26,7 @@ bool combi_mode = true;
 const uint32_t CvtEltSize[] = {0, 0, 0, 0, 0, 1, 2, 3, 4, 0, 5, 0, 0, 0, 6, 0, 0, 0, 7};
 CANTxFrame txmsg = {};
 
-CAN_RamAddress can1_ram;
+CAN_RamAddress can1_ram, can2_ram;
 
 CAN_Filter filter0 = {
   .IdType = FDCAN_STANDARD_ID,
@@ -71,6 +71,21 @@ CANRamConfig can1_ram_cfg = {
   .TxElmtSize = FDCAN_DATA_BYTES_64
 };
 
+CANRamConfig can2_ram_cfg = {
+  .MessageRAMOffset = 384,
+  .StdFiltersNbr = 4,
+  .ExtFiltersNbr = 0,
+  .RxFifo0ElmtsNbr = 4,
+  .RxFifo0ElmtSize = FDCAN_DATA_BYTES_8,
+  .RxFifo1ElmtsNbr = 4,
+  .RxFifo1ElmtSize = FDCAN_DATA_BYTES_8,
+  .RxBuffersNbr = 4,
+  .RxBufferSize = FDCAN_DATA_BYTES_8,
+  .TxEventsNbr = 1,
+  .TxBuffersNbr = 4,
+  .TxFifoQueueElmtsNbr = 4,
+  .TxElmtSize = FDCAN_DATA_BYTES_8
+};
 static CANConfig canConfig1 = {
   .DBTP =  0,
   .CCCR =  0, //FDCAN_CCCR_TEST,
@@ -81,11 +96,6 @@ static CANConfig canConfig2 = {
   .DBTP = 0,
   .CCCR =  0, //FDCAN_CCCR_TEST,
   .TEST =  0, //FDCAN_TEST_LBCK,
-  .RXF0C = (32 << FDCAN_RXF0C_F0S_Pos) | (384 << FDCAN_RXF0C_F0SA_Pos),
-  .RXF1C = (32 << FDCAN_RXF1C_F1S_Pos) | (512 << FDCAN_RXF1C_F1SA_Pos),
-  .TXBC  = (32 << FDCAN_TXBC_TFQS_Pos) | (640 << FDCAN_TXBC_TBSA_Pos),
-  .TXESC = 0x000, // 8 Byte mode only (4 words per message)
-  .RXESC = 0x000 // 8 Byte mode only (4 words per message)
 };
 
 void rx_can_msg(CANRxFrame *rxmsg, packet_t *packet) {
@@ -136,15 +146,41 @@ void rx_can_msg(CANRxFrame *rxmsg, packet_t *packet) {
 bool exec_cmd_swcan(packet_t *rx_packet, packet_t *tx_packet) {
   switch (rx_packet->cmd_code) {
   case cmd_swcan_open:
-    if (rx_packet->data_len == 1) {
-      if (*rx_packet->data != 0x1) {
-        canStop(&CAND2);
-        return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+    switch (rx_packet->data[0]) {
+    case combi_close:
+      canStop(&CAND2);
+      break;
+    case combi_open:
+      uint32_t mode = rx_packet->data[4] | (uint32_t)rx_packet->data[1] << 24 | (uint32_t)rx_packet->data[2] << 16
+          | (uint32_t)rx_packet->data[3] << 8;
+      canMemorryConfig(&CAND2, &canConfig2, &can2_ram_cfg, &can2_ram);
+      canConfig2.TXESC = CvtEltSize[can1_ram_cfg.TxElmtSize]; // 8 Byte mode only (4 words per message)
+      canConfig2.RXESC = CvtEltSize[can1_ram_cfg.RxFifo0ElmtSize] << FDCAN_RXESC_F0DS_Pos | CvtEltSize[can2_ram_cfg.RxFifo1ElmtSize] << FDCAN_RXESC_F1DS_Pos
+             | CvtEltSize[can2_ram_cfg.RxBufferSize] << FDCAN_RXESC_RBDS_Pos;// 8 Byte mode only (4 words per message)
+
+      /* Loopback Mode */
+      if (mode & CAN_CTRLMODE_LOOPBACK) {
+        canConfig2.CCCR |= FDCAN_CCCR_TEST | FDCAN_CCCR_MON;
+        canConfig2.TEST |= FDCAN_TEST_LBCK;
       }
-      canBaudRate(&canConfig2, 500000);
+
+      /* Enable Monitoring */
+      if (mode & CAN_CTRLMODE_LISTENONLY) {
+        canConfig2.CCCR |= FDCAN_CCCR_MON;
+      }
+
+      /* Disable Auto Retransmission */
+      if (mode & CAN_CTRLMODE_ONE_SHOT) {
+        canConfig2.CCCR |= FDCAN_CCCR_DAR;
+      }
       canStart(&CAND2, &canConfig2);
-      return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+      can2_ram.ExtendedFilterSA = 0;
+      can2_ram.StandardFilterSA = 0;
+      break;
+    default:
+      return false;
     }
+    return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
     break;
 
   case cmd_swcan_bitrate:
@@ -160,10 +196,17 @@ bool exec_cmd_swcan(packet_t *rx_packet, packet_t *tx_packet) {
     if (rx_packet->data_len != 15) {
       return false;
     }
-    txmsg.std.SID = ((uint32_t)rx_packet->data[0] | (uint32_t)(rx_packet->data[1] << 8)
-        | (uint32_t)(rx_packet->data[2] << 16)) & 0x7FF;
+    if (rx_packet->data[13] == 1) {
+      txmsg.ext.EID = (uint32_t)rx_packet->data[0] | (uint32_t)(rx_packet->data[1] << 8)
+          | (uint32_t)(rx_packet->data[2] << 16) | (uint32_t)(rx_packet->data[3] << 24);
+      txmsg.common.XTD = true;
+    } else {
+      txmsg.std.SID = ((uint32_t)rx_packet->data[0] | (uint32_t)(rx_packet->data[1] << 8)
+          | (uint32_t)(rx_packet->data[2] << 16)) & 0x7FF;
+    }
     txmsg.DLC = rx_packet->data[12];
-    memcpy(txmsg.data8, rx_packet->data + 4, rx_packet->data[12]);
+    txmsg.common.RTR = rx_packet->data[14];
+    memcpy(txmsg.data8, rx_packet->data + 4, can_fd_dlc2len(rx_packet->data[12]));
 
     return (canTransmit(&CAND2, CAN_ANY_MAILBOX, &txmsg, TIME_MS2I(100)) == MSG_OK )
         && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
@@ -219,7 +262,7 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
       uint32_t mode = rx_packet->data[4] | (uint32_t)rx_packet->data[1] << 24 | (uint32_t)rx_packet->data[2] << 16
           | (uint32_t)rx_packet->data[3] << 8;
       /* NISO support */
-      if (mode& CAN_CTRLMODE_FD_NON_ISO) {
+      if (mode & CAN_CTRLMODE_FD_NON_ISO) {
         canConfig1.CCCR |= FDCAN_CCCR_NISO;
       }
 
