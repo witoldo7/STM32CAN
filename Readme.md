@@ -1,10 +1,12 @@
 # STM32CAN - WQCAN
-Idea of project is to provide CAN and BDM functionality for Saab Trionic 8 ECU. 
+The idea of the project is to provide CAN and BDM functionality for Saab Trionic 8 ECU. 
 
 ## Currently supported:
 * CombiBeckend - For CAN operation work fine.
-* SocketCAN - FDCAN and most of driver impl is done. Missing error reporting.
-
+* SocketCAN - Most of the driver impl is done.
+     - can0: CAN2.0/FDCAN - various speed can be defined, loop back, one shoot, listen only, FD mode, FD_NON_ISO, TDC_AUTO
+     - can1: SWCAN - 33.3k and 83.3k, loop back, one shoot, listen only.
+     - TODO: BERR_REPORTING
 ## TODO
 * SAE J2534 - Right now only stub definition.
 * BDM - Needs rework.
