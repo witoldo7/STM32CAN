@@ -172,11 +172,19 @@ static THD_FUNCTION(swcan_rx, p) {
       continue;
     }
     while (canReceive(&CAND2, CAN_ANY_MAILBOX, &rxmsg, TIME_IMMEDIATE) == MSG_OK ) {
-      packetbuff[0] = rxmsg.std.SID & 0xFF;
-      packetbuff[1] = (rxmsg.std.SID >> 8) & 0xFF;
-      packetbuff[2] = (rxmsg.std.SID >> 16) & 0xFF;
-      packetbuff[3] = (rxmsg.std.SID >> 24) & 0xFF;
+      if (rxmsg.common.XTD) {
+        packetbuff[0] = rxmsg.ext.EID & 0xFF;
+        packetbuff[1] = (rxmsg.ext.EID >> 8) & 0xFF;
+        packetbuff[2] = (rxmsg.ext.EID >> 16) & 0xFF;
+        packetbuff[3] = (rxmsg.ext.EID >> 24) & 0xFF;
+      } else {
+        packetbuff[0] = rxmsg.std.SID & 0xFF;
+        packetbuff[1] = (rxmsg.std.SID >> 8) & 0xFF;
+        packetbuff[2] = (rxmsg.std.SID >> 16) & 0xFF;
+      }
       packetbuff[12] = rxmsg.DLC;
+      packetbuff[13] = rxmsg.common.XTD;
+      packetbuff[14] = rxmsg.common.RTR;
       memcpy(packetbuff + 4, rxmsg.data8, rxmsg.DLC);
       size = CombiSendPacket(&tx_packet, buffer);
       usb_send(&USBD1, EP_IN, buffer, size);
