@@ -1142,15 +1142,16 @@ static int wqcan_usb_probe(struct usb_interface *intf,
 	int err;
 	struct usb_host_interface *iface_desc;
 	struct usb_device *usbdev = interface_to_usbdev(intf);
-	
+
 	iface_desc = intf->cur_altsetting;
-	if (!iface_desc)
+
+	if (!iface_desc) {
 		return -ENODEV;
-	
-	if (iface_desc->desc.bNumEndpoints == 1)
+	}
+
+	if (iface_desc->desc.bInterfaceNumber != 1) {
 		return -ENODEV;
-	
-	dev_info(&intf->dev, "WQCAN probe\n");
+	}
 
 	priv_dev = kzalloc(sizeof(struct wqcan_dev_priv), GFP_KERNEL);
 	if (!priv_dev) {
