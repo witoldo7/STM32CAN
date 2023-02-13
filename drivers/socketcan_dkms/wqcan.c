@@ -411,7 +411,7 @@ static netdev_tx_t wqcan_usb_start_xmit(struct sk_buff *skb,
 		.cmd_id = WQCAN_CMD_CAN_TRANSMIT_MESSAGE,
 	};
 
-	if (can_dropped_invalid_skb(netdev, skb))
+	if (can_dev_dropped_skb(netdev, skb))
 		return NETDEV_TX_OK;
 
 	ctx = wqcan_usb_get_free_ctx(priv, cf);
@@ -486,7 +486,7 @@ static netdev_tx_t wqcan_usb_start_xmit_sw(struct sk_buff *skb,
 		.cmd_id = WQCAN_CMD_SWCAN_TRANSMIT_MESSAGE,
 	};
 
-	if (can_dropped_invalid_skb(netdev, skb))
+	if (can_dev_dropped_skb(netdev, skb))
 		return NETDEV_TX_OK;
 
 	ctx = wqcan_usb_get_free_ctx(priv, cf);
@@ -1133,6 +1133,10 @@ static int wqcan_net_set_bittiming_sw(struct net_device *netdev)
 	return 0;
 }
 
+static const struct ethtool_ops wqcan_ethtool_ops = {
+	.get_ts_info = ethtool_op_get_ts_info,
+};
+
 static int wqcan_usb_probe(struct usb_interface *intf,
 			  const struct usb_device_id *id)
 {
@@ -1193,6 +1197,8 @@ static int wqcan_usb_probe(struct usb_interface *intf,
 					| CAN_CTRLMODE_TDC_AUTO;
 
 	netdev->netdev_ops = &wqcan_netdev_ops;
+	netdev->ethtool_ops = &wqcan_ethtool_ops;
+
 	netdev->flags |= IFF_ECHO; /* we support local echo */
 
 	SET_NETDEV_DEV(netdev, &intf->dev);
