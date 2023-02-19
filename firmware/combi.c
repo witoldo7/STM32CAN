@@ -176,6 +176,8 @@ bool exec_cmd_swcan(packet_t *rx_packet, packet_t *tx_packet) {
       canStart(&CAND2, &canConfig2);
       can2_ram.ExtendedFilterSA = 0;
       can2_ram.StandardFilterSA = 0;
+      palSetLine(LINE_SWM0);
+      palSetLine(LINE_SWM1);
       break;
     default:
       return false;

@@ -107,6 +107,8 @@ include $(CHIBIOS)/os/rt/rt.mk
 include $(CHIBIOS)/os/common/ports/ARMv7-M/compilers/GCC/mk/port.mk
 # Auto-build files in ./source recursively.
 include $(CHIBIOS)/tools/mk/autobuild.mk
+include $(CHIBIOS)/os/hal/lib/streams/streams.mk
+include $(CHIBIOS)/os/various/shell/shell.mk
 
 include ./bdm/bdm.mk
 # Define linker script file here
@@ -117,7 +119,6 @@ LDSCRIPT= $(STARTUPLD)/STM32H750xB.ld
 CSRC = $(ALLCSRC) \
        $(BOARDSRC) \
        $(BDMSRC) \
-       $(TESTSRC) \
        usbcombi.c utils.c combi.c main.c
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
@@ -148,7 +149,7 @@ TCPPSRC =
 ASMSRC = $(ALLASMSRC)
 ASMXSRC = $(ALLXASMSRC)
 
-INCDIR = $(ALLINC) $(BOARDINC) $(BDMINC) $(TESTINC)
+INCDIR = $(ALLINC) $(BOARDINC) $(BDMINC) $(CHIBIOS_CONTRIB)/os/various
 
 #
 # Project, sources and paths
