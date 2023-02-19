@@ -89,21 +89,21 @@
 #define STM32_PLL1_Q_ENABLED                TRUE
 #define STM32_PLL1_R_ENABLED                TRUE
 #define STM32_PLL1_DIVM_VALUE               5
-#define STM32_PLL1_DIVN_VALUE               192
+#define STM32_PLL1_DIVN_VALUE               160
 #define STM32_PLL1_FRACN_VALUE              0
 #define STM32_PLL1_DIVP_VALUE               2
-#define STM32_PLL1_DIVQ_VALUE               12
+#define STM32_PLL1_DIVQ_VALUE               10
 #define STM32_PLL1_DIVR_VALUE               2
 #define STM32_PLL2_ENABLED                  TRUE
 #define STM32_PLL2_P_ENABLED                TRUE
 #define STM32_PLL2_Q_ENABLED                TRUE
 #define STM32_PLL2_R_ENABLED                TRUE
-#define STM32_PLL2_DIVM_VALUE               5
-#define STM32_PLL2_DIVN_VALUE               192
+#define STM32_PLL2_DIVM_VALUE               10
+#define STM32_PLL2_DIVN_VALUE               200
 #define STM32_PLL2_FRACN_VALUE              0
-#define STM32_PLL2_DIVP_VALUE               16
-#define STM32_PLL2_DIVQ_VALUE               12
-#define STM32_PLL2_DIVR_VALUE               2
+#define STM32_PLL2_DIVP_VALUE               10
+#define STM32_PLL2_DIVQ_VALUE               10
+#define STM32_PLL2_DIVR_VALUE               10
 #define STM32_PLL3_ENABLED                  TRUE
 #define STM32_PLL3_P_ENABLED                TRUE
 #define STM32_PLL3_Q_ENABLED                TRUE
@@ -111,9 +111,9 @@
 #define STM32_PLL3_DIVM_VALUE               25
 #define STM32_PLL3_DIVN_VALUE               192
 #define STM32_PLL3_FRACN_VALUE              0
-#define STM32_PLL3_DIVP_VALUE               2
-#define STM32_PLL3_DIVQ_VALUE               4
-#define STM32_PLL3_DIVR_VALUE               2
+#define STM32_PLL3_DIVP_VALUE               16
+#define STM32_PLL3_DIVQ_VALUE               16
+#define STM32_PLL3_DIVR_VALUE               16
 
 /*
  * Core clocks dynamic settings (can be changed at runtime).
@@ -142,7 +142,7 @@
 #define STM32_STOPWUCK                      0
 #define STM32_RTCPRE_VALUE                  8
 #define STM32_CKPERSEL                      STM32_CKPERSEL_HSE_CK
-#define STM32_SDMMCSEL                      STM32_SDMMCSEL_PLL1_Q_CK
+#define STM32_SDMMCSEL                      STM32_SDMMCSEL_PLL2_R_CK
 #define STM32_QSPISEL                       STM32_QSPISEL_HCLK
 #define STM32_FMCSEL                        STM32_QSPISEL_HCLK
 #define STM32_SWPSEL                        STM32_SWPSEL_PCLK1
@@ -163,7 +163,7 @@
 #define STM32_SPI6SEL                       STM32_SPI6SEL_PCLK4
 #define STM32_SAI4BSEL                      STM32_SAI4BSEL_PLL1_Q_CK
 #define STM32_SAI4ASEL                      STM32_SAI4ASEL_PLL1_Q_CK
-#define STM32_ADCSEL                        STM32_ADCSEL_PLL2_P_CK
+#define STM32_ADCSEL                        STM32_ADCSEL_PLL3_R_CK
 #define STM32_LPTIM345SEL                   STM32_LPTIM345SEL_PCLK4
 #define STM32_LPTIM2SEL                     STM32_LPTIM2SEL_PCLK4
 #define STM32_I2C4SEL                       STM32_I2C4SEL_PCLK4
@@ -365,7 +365,7 @@
 /*
  * SERIAL driver system settings.
  */
-#define STM32_SERIAL_USE_USART1             FALSE
+#define STM32_SERIAL_USE_USART1             TRUE
 #define STM32_SERIAL_USE_USART2             FALSE
 #define STM32_SERIAL_USE_USART3             FALSE
 #define STM32_SERIAL_USE_UART4              FALSE

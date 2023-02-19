@@ -14,7 +14,11 @@
 #include "hal.h"
 #include "combi.h"
 #include "usbcombi.h"
+#include "shell.h"
+#include "chprintf.h"
+#include "debug.h"
 
+BaseSequentialStream *GlobalDebugChannel;
 static semaphore_t rxSem;
 static semaphore_t processSem;
 uint8_t receiveBuf[OUT_PACKETSIZE];
@@ -33,6 +37,20 @@ void dataReceived(USBDriver *usbp, usbep_t ep) {
   chSysUnlockFromISR();
 }
 
+bool combiConfigureHookI(USBDriver *usbp) {
+  if (usbGetDriverStateI(usbp) != USB_ACTIVE) {
+    return true;
+  }
+
+  if (usbGetReceiveStatusI(usbp, EP_OUT)) {
+    return true;
+  }
+
+  usbStartReceiveI(usbp, EP_OUT, receiveBuf, IN_PACKETSIZE);
+
+  return false;
+}
+
 static THD_WORKING_AREA(usb_rx_wa, 4096);
 static THD_FUNCTION(usb_rx, arg) {
   (void)arg;
@@ -48,7 +66,6 @@ static THD_FUNCTION(usb_rx, arg) {
       continue;
     }
     if (*(receiveBuf) == 0) {
-      start_receive(&USBD1, EP_OUT, receiveBuf, IN_PACKETSIZE);
       continue;
     }
     uint8_t rec_size = ((USBDriver*)&USBD1)->epc[EP_OUT]->out_state->rxcnt;
@@ -192,33 +209,88 @@ static THD_FUNCTION(swcan_rx, p) {
   }
   chEvtUnregister(&CAND2.rxfull_event, &el);
 }
+#define SHELL_WA_SIZE   THD_WORKING_AREA_SIZE(2048)
+
+static const ShellCommand commands[] = {
+  {NULL, NULL}
+};
+
+static const ShellConfig shell_cfg1 = {
+  (BaseSequentialStream *)&SDU1,
+  commands
+};
+
+static const SerialConfig sercfg = {
+    115200,
+    0,
+    0,
+    0
+};
+
+thread_t *shelltp = NULL;
+/*
+ * Shell exit event.
+ */
+static void ShellHandler(eventid_t id) {
+  (void)id;
+  if (chThdTerminatedX(shelltp)) {
+    chThdRelease(shelltp);
+    shelltp = NULL;
+  }
+}
 
 int main(void) {
+
+  static const evhandler_t evhndl[] = {
+    ShellHandler
+  };
+
+  event_listener_t el0;
+
   halInit();
   chSysInit();
   chSemObjectInit(&rxSem, 1);
   chSemObjectInit(&processSem, 1);
 
+  sdStart(&SD1, &sercfg);
+  GlobalDebugChannel = (BaseSequentialStream *)&SD1;
+
   adcStart(&ADCD1, NULL);
 
+  sduObjectInit(&SDU1);
+  sduStart(&SDU1, &serusbcfg1);
+
   usbDisconnectBus(&USBD1);
-  chThdSleepMilliseconds(1000);
   usbStart(&USBD1, &usb_config);
+
+  /* USB mass storage configuration */
   usbConnectBus(&USBD1);
+  chEvtRegister(&shell_terminated, &el0, 0);
+
+  /*
+   * Shell manager initialization.
+   * Event zero is shell exit.
+   */
+  shellInit();
 
   chThdCreateStatic(usb_rx_wa, sizeof(usb_rx_wa), NORMALPRIO + 7, usb_rx, NULL);
   chThdCreateStatic(combi_wa, sizeof(combi_wa), NORMALPRIO + 7, combi, NULL);
   chThdCreateStatic(can_rx_wa, sizeof(can_rx_wa), NORMALPRIO + 20, can_rx, NULL);
   chThdCreateStatic(swcan_rx_wa, sizeof(swcan_rx_wa), NORMALPRIO + 7, swcan_rx, NULL);
 
-  bool usbinit = false; //fixme
+  /*
+   * Normal main() thread activity, handling SD card events and shell
+   * start/exit.
+   */
   while (TRUE) {
+    if (!shelltp && SDU1.config->usbp->state == USB_ACTIVE) {
+      /* Starting shells.*/
+      shelltp = chThdCreateFromHeap(NULL, SHELL_WA_SIZE,
+                                       "shell1", NORMALPRIO + 1,
+                                       shellThread, (void *)&shell_cfg1);
+      chThdSleepMilliseconds(500);
 
-    while (is_ready() & usbinit) {
-      chThdSleepMilliseconds(100);
     }
-    chThdSleepMilliseconds(100);
-    start_receive(&USBD1, EP_OUT, receiveBuf, IN_PACKETSIZE);
-    //usbinit = true;
+    chEvtDispatch(evhndl, chEvtWaitOneTimeout(EVENT_MASK(0), TIME_MS2I(500)));
   }
 }

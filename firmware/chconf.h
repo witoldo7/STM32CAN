@@ -37,7 +37,8 @@
  * @{
  */
 /*===========================================================================*/
-
+#define SHELL_CMD_TEST_ENABLED              FALSE
+#define CHPRINTF_USE_FLOAT                  TRUE
 /**
  * @brief   Handling of instances.
  * @note    If enabled then threads assigned to various instances can
