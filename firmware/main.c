@@ -17,15 +17,27 @@
 #include "shell.h"
 #include "chprintf.h"
 #include "debug.h"
+#include "j2534.h"
 
 BaseSequentialStream *GlobalDebugChannel;
 static semaphore_t rxSem;
 static semaphore_t processSem;
-uint8_t receiveBuf[OUT_PACKETSIZE];
-uint8_t transferBuf[IN_PACKETSIZE];
-packet_t rx_packet = {};
-packet_t tx_packet = {};
+uint8_t receiveBuf[OUT_PACKETSIZE*2];
+uint8_t transferBuf[IN_PACKETSIZE*2];
+uint8_t rxdata[600], txdata[300];
+packet_t rx_packet = {.data = rxdata};
+packet_t tx_packet = {.data = txdata};
 
+bool (*hscan_rx_cb)(CANRxFrame*, packet_t*);
+bool (*swcan_rx_cb)(CANRxFrame*, packet_t*);
+
+void registerHsCanCallback(bool (*cb)(CANRxFrame *rxmsg, packet_t *packet)) {
+  hscan_rx_cb = cb;
+}
+
+void registerSwCanCallback(bool (*cb)(CANRxFrame *rxmsg, packet_t *packet)) {
+  swcan_rx_cb = cb;
+}
 /*
  * data Received Callback
  */
@@ -51,11 +63,9 @@ bool combiConfigureHookI(USBDriver *usbp) {
   return false;
 }
 
-static THD_WORKING_AREA(usb_rx_wa, 4096);
+static THD_WORKING_AREA(usb_rx_wa, 8196);
 static THD_FUNCTION(usb_rx, arg) {
   (void)arg;
-  uint8_t buff[300] = {0};
-  rx_packet.data = buff;
   chRegSetThreadName("usbReceiver");
   bool is_completed = true;
   uint16_t cur_pos = 0;
@@ -88,7 +98,7 @@ static THD_FUNCTION(usb_rx, arg) {
         cur_pos = 0;
         len = 0;
         is_completed = true;
-        memset(receiveBuf, 0, OUT_PACKETSIZE);
+        memset(receiveBuf, 0, OUT_PACKETSIZE*2);
       }
     } else {
       if ((cur_pos + rec_size) >= len + 3) {
@@ -100,17 +110,17 @@ static THD_FUNCTION(usb_rx, arg) {
         cur_pos = 0;
         len = 0;
         is_completed = true;
-        memset(receiveBuf, 0, OUT_PACKETSIZE);
+        memset(receiveBuf, 0, OUT_PACKETSIZE*2);
       } else {
         memcpy(rx_packet.data + cur_pos, receiveBuf, rec_size);
         cur_pos += rec_size;
       }
     }
-    start_receive(&USBD1, EP_OUT, receiveBuf, IN_PACKETSIZE);
+    start_receive(&USBD1, EP_OUT, receiveBuf, IN_PACKETSIZE*2);
   }
 }
 
-static THD_WORKING_AREA(combi_wa, 4096);
+static THD_WORKING_AREA(combi_wa, 8196);
 static THD_FUNCTION(combi, arg) {
   (void)arg;
   bool ret = false;
@@ -132,14 +142,17 @@ static THD_FUNCTION(combi, arg) {
       case 0x80:  //CAN utility.
         ret = exec_cmd_can(&rx_packet, &tx_packet);
         break;
+      case 0xA0: // J2534 utility.
+        ret = exec_cmd_j2534(&rx_packet, &tx_packet);
+        break;
       default:
         continue;
       }
       if (ret != true) {
-        CombiSendReplyPacket(&tx_packet, &rx_packet, 0, 0, cmd_term_nack);
+        prepareReplyPacket(&tx_packet, &rx_packet, 0, 0, cmd_term_nack);
       }
 
-      size = CombiSendPacket(&tx_packet, transferBuf);
+      size = covertPacketToBuffer(&tx_packet, transferBuf);
       usb_send(&USBD1, EP_IN, transferBuf, size);
     }
   }
@@ -152,7 +165,8 @@ static THD_FUNCTION(can_rx, p) {
   CANRxFrame rxmsg = {};
   uint8_t size = 0;
   uint8_t buffer[IN_PACKETSIZE * 2] = {0};
-  packet_t tx_packet = {};
+  uint8_t canbuff[IN_PACKETSIZE * 2] = {0};
+  packet_t tx_packet = {.data = canbuff};
   chRegSetThreadName("can receiver");
   chEvtRegister(&CAND1.rxfull_event, &el, 0);
 
@@ -161,8 +175,11 @@ static THD_FUNCTION(can_rx, p) {
       continue;
     }
     while (canReceive(&CAND1, CAN_ANY_MAILBOX, &rxmsg, TIME_IMMEDIATE) == MSG_OK ) {
-      rx_can_msg(&rxmsg, &tx_packet);
-      size = CombiSendPacket(&tx_packet, buffer);
+      if (hscan_rx_cb == NULL)
+        continue;
+      if (!hscan_rx_cb(&rxmsg, &tx_packet))
+        continue;
+      size = covertPacketToBuffer(&tx_packet, buffer);
       if (!(((USBDriver*)&USBD1)->state == USB_ACTIVE)) {
             continue;
       }
@@ -203,7 +220,7 @@ static THD_FUNCTION(swcan_rx, p) {
       packetbuff[13] = rxmsg.common.XTD;
       packetbuff[14] = rxmsg.common.RTR;
       memcpy(packetbuff + 4, rxmsg.data8, rxmsg.DLC);
-      size = CombiSendPacket(&tx_packet, buffer);
+      size = covertPacketToBuffer(&tx_packet, buffer);
       usb_send(&USBD1, EP_IN, buffer, size);
     }
   }
@@ -240,7 +257,6 @@ static void ShellHandler(eventid_t id) {
 }
 
 int main(void) {
-
   static const evhandler_t evhndl[] = {
     ShellHandler
   };

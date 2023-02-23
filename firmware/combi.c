@@ -20,9 +20,6 @@ bool writeflash(char *flash_type, LONG start_addr, LONG size);
 
 uint8_t version[2] = {0x03, 0x01};
 uint8_t egt_temp[5] = {0};
-uint8_t packetbuff[80] = {0};
-bool combi_mode = true;
-
 const uint32_t CvtEltSize[] = {0, 0, 0, 0, 0, 1, 2, 3, 4, 0, 5, 0, 0, 0, 6, 0, 0, 0, 7};
 CANTxFrame txmsg = {};
 
@@ -98,49 +95,61 @@ static CANConfig canConfig2 = {
   .TEST =  0, //FDCAN_TEST_LBCK,
 };
 
-void rx_can_msg(CANRxFrame *rxmsg, packet_t *packet) {
-  packet->data = packetbuff;
+bool combi_rx_can_cb(CANRxFrame *rxmsg, packet_t *packet) {
   if (rxmsg->common.XTD) {
-    packetbuff[0] = rxmsg->ext.EID & 0xFF;
-    packetbuff[1] = (rxmsg->ext.EID >> 8) & 0xFF;
-    packetbuff[2] = (rxmsg->ext.EID >> 16) & 0xFF;
-    packetbuff[3] = (rxmsg->ext.EID >> 24) & 0xFF;
+    packet->data[0] = rxmsg->ext.EID & 0xFF;
+    packet->data[1] = (rxmsg->ext.EID >> 8) & 0xFF;
+    packet->data[2] = (rxmsg->ext.EID >> 16) & 0xFF;
+    packet->data[3] = (rxmsg->ext.EID >> 24) & 0xFF;
   } else {
-    packetbuff[0] = rxmsg->std.SID & 0xFF;
-    packetbuff[1] = (rxmsg->std.SID >> 8) & 0xFF;
-    packetbuff[2] = (rxmsg->std.SID >> 16) & 0xFF;
+    packet->data[0] = rxmsg->std.SID & 0xFF;
+    packet->data[1] = (rxmsg->std.SID >> 8) & 0xFF;
+    packet->data[2] = (rxmsg->std.SID >> 16) & 0xFF;
   }
-  if (combi_mode) {
-    packetbuff[12] = rxmsg->DLC;
-    packetbuff[13] = rxmsg->common.XTD;
-    packetbuff[14] = rxmsg->common.RTR;
-    memcpy(packetbuff + 4, rxmsg->data8, rxmsg->DLC);
-    packet->cmd_code = cmd_can_rxframe;
-    packet->data_len = 15;
+  packet->data[12] = rxmsg->DLC;
+  packet->data[13] = rxmsg->common.XTD;
+  packet->data[14] = rxmsg->common.RTR;
+  memcpy(packet->data + 4, rxmsg->data8, rxmsg->DLC);
+  packet->cmd_code = cmd_can_rxframe;
+  packet->data_len = 15;
+  return true;
+}
+
+bool socketcan_rx_can_cb(CANRxFrame *rxmsg, packet_t *packet) {
+  if (rxmsg->common.XTD) {
+    packet->data[0] = rxmsg->ext.EID & 0xFF;
+    packet->data[1] = (rxmsg->ext.EID >> 8) & 0xFF;
+    packet->data[2] = (rxmsg->ext.EID >> 16) & 0xFF;
+    packet->data[3] = (rxmsg->ext.EID >> 24) & 0xFF;
   } else {
-    /* data[0:3] - SID or EID
-     * data[4]
-     *    b0 - XTD
-     *    b1 - RTR
-     *    b2 - ESI
-     *    b3 - BRS
-     *    b4 - FDF
-     *    b4 - ANMF
-     * data[5] - FIDX
-     * data[6:7] - RXTS
-     * data[8] - DLC
-     * data[9:9+DLC] - data
-     */
-    packetbuff[4] = (rxmsg->common.XTD) | (rxmsg->common.RTR << 1) | (rxmsg->common.ESI << 2)
-                    | (rxmsg->BRS << 3) | (rxmsg->FDF << 4) | (rxmsg->ANMF << 5);
-    packetbuff[5] = rxmsg->FIDX;
-    packetbuff[6] = rxmsg->RXTS & 0xFF;
-    packetbuff[7] = (rxmsg->RXTS >> 8) & 0xFF;
-    packetbuff[8] = rxmsg->DLC;
-    memcpy(packetbuff + 9, rxmsg->data8, can_fd_dlc2len(rxmsg->DLC));
-    packet->cmd_code = cmd_can_rxframe_fdcan;
-    packet->data_len = 73;
+    packet->data[0] = rxmsg->std.SID & 0xFF;
+    packet->data[1] = (rxmsg->std.SID >> 8) & 0xFF;
+    packet->data[2] = (rxmsg->std.SID >> 16) & 0xFF;
   }
+  /* data[0:3] - SID or EID
+   * data[4]
+   *    b0 - XTD
+   *    b1 - RTRstatic uint8_t canFilterIndex = 0;
+   *
+   *    b2 - ESI
+   *    b3 - BRS
+   *    b4 - FDF
+   *    b4 - ANMF
+   * data[5] - FIDX
+   * data[6:7] - RXTS
+   * data[8] - DLC
+   * data[9:9+DLC] - data
+   */
+  packet->data[4] = (rxmsg->common.XTD) | (rxmsg->common.RTR << 1) | (rxmsg->common.ESI << 2)
+                  | (rxmsg->BRS << 3) | (rxmsg->FDF << 4) | (rxmsg->ANMF << 5);
+  packet->data[5] = rxmsg->FIDX;
+  packet->data[6] = rxmsg->RXTS & 0xFF;
+  packet->data[7] = (rxmsg->RXTS >> 8) & 0xFF;
+  packet->data[8] = rxmsg->DLC;
+  memcpy(packet->data + 9, rxmsg->data8, can_fd_dlc2len(rxmsg->DLC));
+  packet->cmd_code = cmd_can_rxframe_fdcan;
+  packet->data_len = 73;
+  return true;
 }
 
 bool exec_cmd_swcan(packet_t *rx_packet, packet_t *tx_packet) {
@@ -182,7 +191,7 @@ bool exec_cmd_swcan(packet_t *rx_packet, packet_t *tx_packet) {
     default:
       return false;
     }
-    return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+    return prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
     break;
 
   case cmd_swcan_bitrate:
@@ -190,7 +199,7 @@ bool exec_cmd_swcan(packet_t *rx_packet, packet_t *tx_packet) {
       uint32_t bitrate = rx_packet->data[3] | (uint32_t)*rx_packet->data << 0x18 | (uint32_t)rx_packet->data[1] << 0x10
           | (uint32_t)rx_packet->data[2] << 8;
 
-      return canBaudRate(&canConfig2, bitrate) && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+      return canBaudRate(&canConfig2, bitrate) && prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
     }
    break;
 
@@ -211,7 +220,7 @@ bool exec_cmd_swcan(packet_t *rx_packet, packet_t *tx_packet) {
     memcpy(txmsg.data8, rx_packet->data + 4, can_fd_dlc2len(rx_packet->data[12]));
 
     return (canTransmit(&CAND2, CAN_ANY_MAILBOX, &txmsg, TIME_MS2I(100)) == MSG_OK )
-        && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+        && prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
   break;
 
   case cmd_swcan_filter:
@@ -227,16 +236,17 @@ bool exec_cmd_swcan(packet_t *rx_packet, packet_t *tx_packet) {
 bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
   switch (rx_packet->cmd_code) {
   case cmd_can_ecuconnect:
-    return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+    return prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
 
   case cmd_can_filter:
-    if (rx_packet->data_len != 0 && rx_packet->data_len <= 8) {
-      if (*rx_packet->data == 0x0) {
-        return false;
+    if (rx_packet->data_len != 0)  {
+      if ((rx_packet->data_len == 1) && (rx_packet->data[0] == 0)) {
+        canGlobalFilter(&canConfig1, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
+        canStop(&CAND1);
+        canStart(&CAND1, &canConfig1);;
       }
-      //set_can_filter(&CAND1, rx_packet->data);
     }
-    return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+    return prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
 
   case cmd_can_open:
     switch (rx_packet->data[0]) {
@@ -244,7 +254,7 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
       canStop(&CAND1);
       break;
     case combi_open:
-      combi_mode = true;
+      registerHsCanCallback(&combi_rx_can_cb);
       canBaudRate(&canConfig1, 500000);
       canMemorryConfig(&CAND1, &canConfig1, &can1_ram_cfg, &can1_ram);
       canGlobalFilter(&canConfig1, FDCAN_REJECT, FDCAN_REJECT, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
@@ -255,8 +265,7 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
       canFilter(&can1_ram, &filter2);
       break;
     case fdcan_open:
-      combi_mode = false;
-      canConfig1.CCCR = 0;
+      registerHsCanCallback(&socketcan_rx_can_cb);
       canConfig1.TEST = 0;
       canConfig1.TXESC = CvtEltSize[can1_ram_cfg.TxElmtSize]; // 8 Byte mode only (4 words per message)
       canConfig1.RXESC = CvtEltSize[can1_ram_cfg.RxFifo0ElmtSize] << FDCAN_RXESC_F0DS_Pos | CvtEltSize[can1_ram_cfg.RxFifo1ElmtSize] << FDCAN_RXESC_F1DS_Pos
@@ -289,15 +298,13 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
         canConfig1.CCCR |= FDCAN_CCCR_DAR;
       }
       canMemorryConfig(&CAND1, &canConfig1, &can1_ram_cfg, &can1_ram);
-      //canGlobalFilter(&canConfig1, FDCAN_REJECT, FDCAN_REJECT, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
+      canGlobalFilter(&canConfig1, FDCAN_REJECT, FDCAN_REJECT, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
       canStart(&CAND1, &canConfig1);
-      can1_ram.ExtendedFilterSA = 0;
-      can1_ram.StandardFilterSA = 0;
       break;
     default:
       return false;
     }
-    return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+    return prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
     break;
 
   case cmd_can_bitrate:
@@ -306,11 +313,7 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
       uint32_t bitrate = rx_packet->data[3] | (uint32_t)*rx_packet->data << 0x18 | (uint32_t)rx_packet->data[1] << 0x10
           | (uint32_t)rx_packet->data[2] << 8;
       bool ret = canBaudRate(&canConfig1, bitrate);
-      if (ret) {
-        canStop(&CAND1);
-        canStart(&CAND1, &canConfig1);
-      }
-      return ret && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+      return ret && prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
       break;
     case 5:
       canStop(&CAND1);
@@ -331,9 +334,7 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
     default:
       return false;
     }
-    canStart(&CAND1, &canConfig1);
-    CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
-    break;
+    return prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
 
   case cmd_can_txframe:
     if (rx_packet->data_len != 15) {
@@ -352,7 +353,7 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
     memcpy(txmsg.data8, rx_packet->data + 4, can_fd_dlc2len(rx_packet->data[12]));
 
     return (canTransmit(&CAND1, CAN_ANY_MAILBOX, &txmsg, TIME_MS2I(100)) == MSG_OK )
-        && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+        && prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
 
   /* data[0:3] - SID or EID
    * data[4]
@@ -387,8 +388,7 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
     memcpy(txmsg.data8, rx_packet->data + 7, can_fd_dlc2len(rx_packet->data[6]));
 
     return (canTransmit(&CAND1, CAN_ANY_MAILBOX, &txmsg, TIME_MS2I(100)) == MSG_OK )
-        && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
-    break;
+        && prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
   }
 
   return false;
@@ -397,75 +397,38 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
 bool exec_cmd_board(packet_t *rx_packet, packet_t *tx_packet) {
   switch (rx_packet->cmd_code) {
   case cmd_brd_fwversion:
-    return CombiSendReplyPacket(tx_packet, rx_packet, version, 2, cmd_term_ack);
+    return prepareReplyPacket(tx_packet, rx_packet, version, 2, cmd_term_ack);
   case cmd_brd_adcfilter:
-    return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+    return prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
   case cmd_brd_adc:
-    return CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+    return prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
   case cmd_brd_egt:
-    return CombiSendReplyPacket(tx_packet, rx_packet, egt_temp, 5, cmd_term_ack);
+    return prepareReplyPacket(tx_packet, rx_packet, egt_temp, 5, cmd_term_ack);
   case cmd_brd_vbat:
     uint8_t vbat[4] = {0};
     get_vbat(vbat);
-    return CombiSendReplyPacket(tx_packet, rx_packet, vbat, 2, cmd_term_ack);
+    return prepareReplyPacket(tx_packet, rx_packet, vbat, 2, cmd_term_ack);
   }
   return false;
-}
-
-bool CombiSendReplyPacket(packet_t *reply, packet_t *source, uint8_t *data,
-                          uint16_t data_len, uint8_t term) {
-  if ((reply == (packet_t*)0x0) || (source == (packet_t*)0x0)) {
-    return false;
-  }
-  else {
-    reply->cmd_code = source->cmd_code;
-    reply->data_len = data_len;
-    if ((data != 0) && (data_len != 0)) {
-      reply->data = data;
-    }
-    reply->term = term;
-  }
-  return true;
-}
-
-uint8_t CombiSendPacket(packet_t *packet, uint8_t *buffer) {
-  uint8_t size = 0;
-  if (packet != (packet_t*)0x0) {
-    buffer[0] = packet->cmd_code;
-    buffer[1] = (uint8_t)(packet->data_len >> 8);
-    buffer[2] = (uint8_t)packet->data_len;
-    if (*(packet->data) != 0 && packet->data_len != 0) {
-      memcpy(buffer + 3, packet->data, packet->data_len);
-      size = packet->data_len + 3;
-      buffer[size] = packet->term;
-      size++;
-    }
-    else {
-      buffer[3] = packet->term;
-      size = 4;
-    }
-    return size;
-  }
-  return size;
 }
 
 bool exec_cmd_bdm(packet_t *rx_packet, packet_t *tx_packet) {
   switch (rx_packet->cmd_code) {
   case cmd_bdm_stop_chip:
-    return (stop_chip() == TERM_OK) && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+    return (stop_chip() == TERM_OK) && prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
   case cmd_bdm_reset_chip:
-    return (reset_chip() == TERM_OK) && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+    return (reset_chip() == TERM_OK) && prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
   case cmd_bdm_run_chip:
     if (rx_packet->data_len == 4) {
       uint32_t addr = rx_packet->data[3] | (uint32_t)rx_packet->data[0] << 24 | (uint32_t)rx_packet->data[1] << 16
           | (uint32_t)rx_packet->data[2] << 8;
-      return (run_chip(&addr) == TERM_OK) && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+      return (run_chip(&addr) == TERM_OK) && prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
     }
     break;
   case cmd_bdm_step_chip:
-    return (step_chip() == TERM_OK) && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+    return (step_chip() == TERM_OK) && prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
   case cmd_bdm_restart_chip:
-    return (restart_chip() == TERM_OK) && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+    return (restart_chip() == TERM_OK) && prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
   case cmd_bdm_mem_read:
     if (rx_packet->data_len < 2) {
       return false;
@@ -473,38 +436,38 @@ bool exec_cmd_bdm(packet_t *rx_packet, packet_t *tx_packet) {
     if (rx_packet->data[0] == 1) {
       uint8_t ret[2];
       if (rx_packet->data[1] == 0) {
-        return (memdump_byte(ret) == TERM_OK) && CombiSendReplyPacket(tx_packet, rx_packet, ret, 1, cmd_term_ack);
+        return (memdump_byte(ret) == TERM_OK) && prepareReplyPacket(tx_packet, rx_packet, ret, 1, cmd_term_ack);
       }
       else if (rx_packet->data_len == 6) {
         uint32_t addr = (uint32_t)rx_packet->data[5] | (uint32_t)rx_packet->data[2] << 24
             | (uint32_t)rx_packet->data[3] << 16 | (uint32_t)rx_packet->data[4] << 8;
-        return (memread_byte(ret, &addr) == TERM_OK) && CombiSendReplyPacket(tx_packet, rx_packet, ret, 1, cmd_term_ack);;
+        return (memread_byte(ret, &addr) == TERM_OK) && prepareReplyPacket(tx_packet, rx_packet, ret, 1, cmd_term_ack);;
       }
       return false;
     }
     if (rx_packet->data[0] == 2) {
       uint8_t ret[2];
       if (rx_packet->data[1] == 0) {
-        return (memdump_word((WORD*)ret) == TERM_OK) && CombiSendReplyPacket(tx_packet, rx_packet, ret, 2, cmd_term_ack);
+        return (memdump_word((WORD*)ret) == TERM_OK) && prepareReplyPacket(tx_packet, rx_packet, ret, 2, cmd_term_ack);
       }
       else if (rx_packet->data_len == 6) {
         uint32_t addr = (uint32_t)rx_packet->data[5] | (uint32_t)rx_packet->data[2] << 24
             | (uint32_t)rx_packet->data[3] << 16 | (uint32_t)rx_packet->data[4] << 8;
         return (memread_word((WORD*)ret, &addr) == TERM_OK)
-            && CombiSendReplyPacket(tx_packet, rx_packet, ret, 2, cmd_term_ack);;
+            && prepareReplyPacket(tx_packet, rx_packet, ret, 2, cmd_term_ack);;
       }
       return false;
     }
     if (rx_packet->data[0] == 4) {
       uint8_t ret[4];
       if (rx_packet->data[1] == 0) {
-        return (memdump_long((LONG*)ret) == TERM_OK) && CombiSendReplyPacket(tx_packet, rx_packet, ret, 4, cmd_term_ack);
+        return (memdump_long((LONG*)ret) == TERM_OK) && prepareReplyPacket(tx_packet, rx_packet, ret, 4, cmd_term_ack);
       }
       else if (rx_packet->data_len == 6) {
         uint32_t addr = (uint32_t)rx_packet->data[5] | (uint32_t)rx_packet->data[2] << 24
             | (uint32_t)rx_packet->data[3] << 16 | (uint32_t)rx_packet->data[4] << 8;
         return (memread_long((LONG*)ret, &addr) == TERM_OK)
-            && CombiSendReplyPacket(tx_packet, rx_packet, ret, 4, cmd_term_ack);;
+            && prepareReplyPacket(tx_packet, rx_packet, ret, 4, cmd_term_ack);;
       }
       return false;
     }
@@ -514,27 +477,27 @@ bool exec_cmd_bdm(packet_t *rx_packet, packet_t *tx_packet) {
       uint32_t addr = (uint32_t)*rx_packet->data << 24 | (uint32_t)rx_packet->data[1] << 16
           | (uint32_t)rx_packet->data[2] << 8 | (uint32_t)rx_packet->data[3];
       return (memwrite_byte(&addr, rx_packet->data[4]) == TERM_OK)
-          && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+          && prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
     }
     if (rx_packet->data_len == 6) {
       uint32_t addr = (uint32_t)*rx_packet->data << 24 | (uint32_t)rx_packet->data[1] << 16
           | (uint32_t)rx_packet->data[2] << 8 | (uint32_t)rx_packet->data[3];
       WORD data = rx_packet->data[4] << 8 | rx_packet->data[5];
-      return (memwrite_word(&addr, data) == TERM_OK) && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+      return (memwrite_word(&addr, data) == TERM_OK) && prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
     }
     if (rx_packet->data_len == 8) {
       uint32_t addr = (uint32_t)*rx_packet->data << 24 | (uint32_t)rx_packet->data[1] << 16
           | (uint32_t)rx_packet->data[2] << 8 | (uint32_t)rx_packet->data[3];
       LONG data = (uint32_t)rx_packet->data[7] | (uint32_t)rx_packet->data[4] << 24 | (uint32_t)rx_packet->data[5] << 16
           | (uint32_t)rx_packet->data[6] << 8;
-      return (memwrite_long(&addr, &data) == TERM_OK) && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+      return (memwrite_long(&addr, &data) == TERM_OK) && prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
     }
     return false;
   case cmd_bdm_sysreg_read:
     if (rx_packet->data_len == 1) {
       uint8_t ret[4];
       return (sysreg_read((LONG*)ret, rx_packet->data[0]) == TERM_OK)
-          && CombiSendReplyPacket(tx_packet, rx_packet, ret, 4, cmd_term_ack);
+          && prepareReplyPacket(tx_packet, rx_packet, ret, 4, cmd_term_ack);
     }
     return false;
   case cmd_bdm_sysreg_write:
@@ -543,14 +506,14 @@ bool exec_cmd_bdm(packet_t *rx_packet, packet_t *tx_packet) {
           | (uint32_t)rx_packet->data[3] << 8;
 
       return (sysreg_write(rx_packet->data[0], &data) == TERM_OK)
-          && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+          && prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
     }
     return false;
   case cmd_bdm_adreg_read:
     if (rx_packet->data_len == 1) {
       uint8_t ret[4];
       return (adreg_read((LONG*)ret, rx_packet->data[0]) == TERM_OK)
-          && CombiSendReplyPacket(tx_packet, rx_packet, ret, 4, cmd_term_ack);
+          && prepareReplyPacket(tx_packet, rx_packet, ret, 4, cmd_term_ack);
     }
     return false;
   case cmd_bdm_adreg_write:
@@ -559,7 +522,7 @@ bool exec_cmd_bdm(packet_t *rx_packet, packet_t *tx_packet) {
           | (uint32_t)rx_packet->data[3] << 8;
 
       return (adreg_write(rx_packet->data[0], &data) == TERM_OK)
-          && CombiSendReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+          && prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
     }
     return false;
   case cmd_bdm_read_flash:
@@ -593,7 +556,7 @@ bool exec_cmd_bdm(packet_t *rx_packet, packet_t *tx_packet) {
     return false;
   case cmd_bdm_pinstate:
     uint8_t pin = 1; //PIN_PWR.read(); TODO
-    return (pin == 1) && CombiSendReplyPacket(tx_packet, rx_packet, &pin, 1, cmd_term_ack);
+    return (pin == 1) && prepareReplyPacket(tx_packet, rx_packet, &pin, 1, cmd_term_ack);
   }
 
   return false;
@@ -634,7 +597,7 @@ bool readflash(LONG start_addr, LONG size) {
     buf_ptr = buf_ptr + 1;
     curr_addr = curr_addr + 2;
     if (((curr_addr - start_addr) & 0xff) == 0) {
-      buffsize = CombiSendPacket(&tx_packet, buffer);
+      buffsize = covertPacketToBuffer(&tx_packet, buffer);
       usb_send(&USBD1, EP_IN, buffer, buffsize);
       buf_ptr = (WORD*)flash_buf;
     }
@@ -681,7 +644,7 @@ bool writeflash(char *flash_type, LONG start_addr, LONG size) {
   tx_packet.data_len = 0;
   tx_packet.data = (BYTE*)0x0;
   tx_packet.term = cmd_term_ack;
-  buffsize = CombiSendPacket(&tx_packet, buffer);
+  buffsize = covertPacketToBuffer(&tx_packet, buffer);
   usb_send(&USBD1, EP_IN, buffer, buffsize);
 
   rx_packet.data = flash_buf;
@@ -712,7 +675,7 @@ bool writeflash(char *flash_type, LONG start_addr, LONG size) {
       curr_addr = curr_addr + 2;
     }
     bytes_written = bytes_written + 0x100;
-    buffsize = CombiSendPacket(&tx_packet, buffer);
+    buffsize = covertPacketToBuffer(&tx_packet, buffer);
     usb_send(&USBD1, EP_IN, buffer, buffsize);
   } while (status == true);
 
