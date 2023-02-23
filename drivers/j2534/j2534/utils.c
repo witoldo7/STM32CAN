@@ -21,12 +21,23 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 }
 #endif
 
-char* parsemsg(PASSTHRU_MSG *msg) {
-	if (msg == NULL) 
+char LAST_ERROR[MAX_LEN];
+char msgBuff[4528];
+
+void last_error(const char *fmt, ...) {
+	snprintf(LAST_ERROR, MAX_LEN, fmt);
+	log_trace(fmt);
+}
+
+char *getLastError() {
+	return LAST_ERROR;
+}
+
+char* parsemsg(PASSTHRU_MSG* msg) {
+	if (msg == NULL)
 		return "NULL";
-	char *buff;
 	unsigned int length = 0;
-	length = sprintf(buff,
+	length = sprintf(msgBuff,
 		"\tMSG: %p\n"
 		"\t\tProtocolID:\t%lu\n"
 		"\t\tRxStatus:\t%08lX\n"
@@ -34,13 +45,14 @@ char* parsemsg(PASSTHRU_MSG *msg) {
 		"\t\tTimeStamp:\t0x%08lX (%lu \xC2\xB5sec)\n"
 		"\t\tDataSize:\t%lu\n"
 		"\t\tExtraData:\t%lu\n"
-		"\t\tData:\n\t\t\t",
+		"\t\tData:\t",
 		msg, msg->ProtocolID, msg->RxStatus, msg->TxFlags, msg->Timestamp,
 		msg->Timestamp, msg->DataSize, msg->ExtraDataIndex);
-	for (unsigned int i=0; i <  msg->DataSize; i++)
-		length = sprintf(buff + length, "%02X ", (uint8_t)msg->Data[i]);
-	sprintf(buff + length, "\n");
-	return buff;
+
+		for (unsigned int i = 0; i < msg->DataSize; i++)
+			sprintf(msgBuff + length + i*4, "%02X, ", (uint8_t)msg->Data[i]);
+
+	return msgBuff;
 }
 
 void check_debug_log(void) {
