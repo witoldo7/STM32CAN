@@ -50,6 +50,7 @@
 
 #define WQCAN_CMD_CAN_OPEN 0x80
 #define WQCAN_CMD_CAN_BIT_RATE 0x81
+#define WQCAN_CMD_CAN_FILTER 0x84
 #define WQCAN_CMD_CAN_RECEIVE_MESSAGE 0x85
 #define WQCAN_CMD_CAN_TRANSMIT_MESSAGE 0x86
 
@@ -231,6 +232,13 @@ struct __packed wqcan_usb_msg_swcan_bitrate {
 	u8 cmd_id;
 	u16 len;
 	u32 bitrate;
+	u8 term;
+};
+
+struct __packed wqcan_usb_msg_can_filter {
+	u8 cmd_id;
+	u16 len;
+	u8 filter;
 	u8 term;
 };
 
@@ -591,6 +599,19 @@ static void wqcan_usb_xmit_change_bitrate_sw(struct wqcan_priv *priv, u32 bitrat
 	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
 }
 
+static void wqcan_usb_xmit_change_filter(struct wqcan_priv *priv)
+{
+	struct wqcan_usb_msg_can_filter usb_msg = {
+		.cmd_id = WQCAN_CMD_CAN_FILTER,
+		.term = 0
+	};
+	put_unaligned_be16(1, &usb_msg.len);
+
+	put_unaligned_be32(0, &usb_msg.filter);
+
+	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
+}
+
 static void wqcan_usb_xmit_read_fw_ver(struct wqcan_priv *priv)
 {
 	struct wqcan_usb_msg_fw_ver usb_msg = {
@@ -936,8 +957,9 @@ static int wqcan_usb_open(struct net_device *netdev)
 	struct wqcan_priv *priv = netdev_priv(netdev);
 	int err;
 	wqcan_usb_can_open(priv, 2);
-	/* common open */
+	wqcan_usb_xmit_change_filter(priv);
 
+	/* common open */
 	err = open_candev(netdev);
 	if (err)
 		return err;
