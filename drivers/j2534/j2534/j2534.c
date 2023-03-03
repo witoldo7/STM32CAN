@@ -23,6 +23,111 @@
 /* WQCAN command id */
 #define WQCAN_CMD_READ_FW_VERSION 0x20
 
+
+
+#if defined(_MSC_VER)
+#define snprintf _snprintf
+#endif
+
+#if defined(PLATFORM_POSIX)
+#include <fcntl.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <unistd.h>
+
+#define THREAD_RETURN_VALUE	NULL
+typedef sem_t * semaphore_t;
+typedef pthread_t thread_t;
+
+static inline semaphore_t semaphore_create(void)
+{
+	sem_t *semaphore;
+	char name[50];
+
+	snprintf(name, sizeof(name), "/org.libusb.example.dpfp_threaded:%d", (int)getpid());
+	semaphore = sem_open(name, O_CREAT | O_EXCL, 0, 0);
+	if (semaphore == SEM_FAILED)
+		return NULL;
+	/* Remove semaphore so that it does not persist after process exits */
+	(void)sem_unlink(name);
+	return semaphore;
+}
+
+static inline void semaphore_give(semaphore_t semaphore)
+{
+	(void)sem_post(semaphore);
+}
+
+static inline void semaphore_take(semaphore_t semaphore)
+{
+	(void)sem_wait(semaphore);
+}
+
+static inline void semaphore_destroy(semaphore_t semaphore)
+{
+	(void)sem_close(semaphore);
+}
+
+static inline int thread_create(thread_t *thread,
+	void *(*thread_entry)(void *arg), void *arg)
+{
+	return pthread_create(thread, NULL, thread_entry, arg) == 0 ? 0 : -1;
+}
+
+static inline void thread_join(thread_t thread)
+{
+	(void)pthread_join(thread, NULL);
+}
+#elif defined(PLATFORM_WINDOWS)
+#define THREAD_RETURN_VALUE	0
+typedef HANDLE semaphore_t;
+typedef HANDLE thread_t;
+
+#if defined(__CYGWIN__)
+typedef DWORD thread_return_t;
+#else
+#include <process.h>
+typedef unsigned thread_return_t;
+#endif
+
+static inline semaphore_t semaphore_create(void)
+{
+	return CreateSemaphore(NULL, 0, 1, NULL);
+}
+
+static inline void semaphore_give(semaphore_t semaphore)
+{
+	(void)ReleaseSemaphore(semaphore, 1, NULL);
+}
+
+static inline void semaphore_take(semaphore_t semaphore)
+{
+	(void)WaitForSingleObject(semaphore, INFINITE);
+}
+
+static inline void semaphore_destroy(semaphore_t semaphore)
+{
+	(void)CloseHandle(semaphore);
+}
+
+static inline int thread_create(thread_t *thread,
+	thread_return_t (__stdcall *thread_entry)(void *arg), void *arg)
+{
+#if defined(__CYGWIN__)
+	*thread = CreateThread(NULL, 0, thread_entry, arg, 0, NULL);
+#else
+	*thread = (HANDLE)_beginthreadex(NULL, 0, thread_entry, arg, 0, NULL);
+#endif
+	return *thread != NULL ? 0 : -1;
+}
+
+static inline void thread_join(thread_t thread)
+{
+	(void)WaitForSingleObject(thread, INFINITE);
+	(void)CloseHandle(thread);
+}
+#endif
+
 static libusb_context *ctx = NULL;
 static libusb_device_handle *handle;
 
@@ -187,12 +292,16 @@ long PTAPI PassThruReadMsgs(unsigned long ChannelID, PASSTHRU_MSG *pMsg,
 	unsigned long err = ERR_NOT_SUPPORTED;
 	uint8_t buff[16] = {0}, buffer[24] = {0}, result[120] = {0}, size = 0;
 	int rbyte = 0;
-	packet_t txPacket = {.data = buff, .cmd_code = cmd_j2534_read_message, .data_len = 8};
+	packet_t txPacket = {.data = buff, .cmd_code = cmd_j2534_read_message, .data_len = 16};
 	memcpy(buff, &ChannelID, sizeof(ChannelID));
+	memcpy(buff + 8, &Timeout, sizeof(Timeout));
 
 	size = covertPacketToBuffer(&txPacket, buffer);
+	
+	if (Timeout < 50)
+		Timeout = 50;
 
-	if (usb_send_replay(buffer, size, 76, 50, result, rbyte) != LIBUSB_SUCCESS) {
+	if (usb_send_replay(buffer, size, 76, Timeout, result, rbyte) != LIBUSB_SUCCESS) {
 		return ERR_NOT_SUPPORTED;
 	}
 
@@ -279,7 +388,7 @@ long PTAPI PassThruWriteMsgs(unsigned long ChannelID, PASSTHRU_MSG *pMsg,
 
 	size = covertPacketToBuffer(&txPacket, buffer);
 
-	if (usb_send_replay(buffer, size, 12, 200, result, rbyte) != LIBUSB_SUCCESS) {
+	if (usb_send_replay(buffer, size, 12, 600, result, rbyte) != LIBUSB_SUCCESS) {
 		return ERR_NOT_SUPPORTED;
 	}
 
@@ -430,7 +539,7 @@ long PTAPI PassThruReadVersion(unsigned long DeviceID, char *pFirmwareVersion, c
 #else
 	snprintf(dll_ver, MAX_LEN, "%s", DLL_VERSION);
 #endif
-	{
+
 	char fw_version[MAX_LEN];
 	uint8_t cmd[4] = {WQCAN_CMD_READ_FW_VERSION, 0, 0, 0};
 	uint8_t result[16] = {0};

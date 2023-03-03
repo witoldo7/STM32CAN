@@ -83,6 +83,8 @@
 //
 // J2534-2 ProtocolID Values
 //
+#define ISO15765_FD_PS					0x0001000C
+#define CAN_FD_PS						0x0001000D
 #define J1850VPW_PS						0x00008000
 #define J1850PWM_PS						0x00008001
 #define ISO9141_PS						0x00008002
@@ -311,13 +313,15 @@
 //
 // J2534-1 v04.04 RxStatus Definitions
 //
-#define TX_MSG_TYPE					0x0001
-#define START_OF_MESSAGE			0x0002
+#define TX_MSG_TYPE					0x0001 // value of the bit #0 states if the message is a transmit loopback (value = 1) or not (value = 0)
+#define START_OF_MESSAGE			0x0002 // value of the bit #1 states if the message is a Start indication (value =1) or not (value = 0).
+#define TX_SUCCESS                  0x0004 // value of the bit #3 states if the message is a TxDone indication (value = 1) or not (value = 0)
 #define RX_BREAK					0x0004
 #define TX_INDICATION				0x0008
-#define ISO15765_PADDING_ERROR		0x0010
+#define ISO15765_PADDING_ERROR		0x0010 //ERROR_IND
+#define ERROR_IND					0x0010 
 #define ISO15765_ADDR_TYPE			0x0080
-//#define CAN_29BIT_ID				0x0100		// Defined above
+//#define CAN_29BIT_ID				0x0100		// value of the bit #8 states if the message is standard (11bit, value = 0) or extended (29bit, value = 1)
 
 
 //
@@ -327,6 +331,10 @@
 #define SW_CAN_HS_RX				0x00020000	// SWCAN Channels Only
 #define SW_CAN_NS_RX				0x00040000	// SWCAN Channels Only
 #define OVERFLOW					0x00010000	// Analog Input Channels Only
+//#define CAN_FD_BRS					0x01000000	// 0 - Data with arbitration speed, 1 = data with CAN_FD_DATA_PHASE_RATE
+//#define CAN_FD_FORMAT				0x02000000
+#define CAN_FD_ESI					0x04000000	// 0 - sender in the Error Active State, 1 - pasive
+#define RX_MSG_TRUNCATED			0x8000000	// 0 - full msg returned, 1 - 4128 bytes returned, rest must be read from extended data array
 
 
 //
@@ -338,7 +346,8 @@
 #define WAIT_P3_MIN_ONLY			0x0200
 #define SCI_MODE					0x400000
 #define SCI_TX_VOLTAGE				0x800000
-
+#define CAN_FD_BRS					0x1000000	// 0 - Data with arbitration speed, 1 = data with CAN_FD_DATA_PHASE_RATE
+#define CAN_FD_FORMAT				0x2000000	// 0 - CAN 2.0, 1 - CAN FD format
 
 //
 // J2534-2 TxFlags Definitions
