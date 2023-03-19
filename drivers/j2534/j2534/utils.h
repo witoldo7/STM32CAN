@@ -9,6 +9,7 @@
 #ifndef __UTILS_H
 #define __UTILS_H
 
+#include <stdbool.h>
 #include "j2534.h"
 
 #define MAX_LEN	80
@@ -20,6 +21,7 @@ enum j2534_command_t {
   cmd_j2534_read_message = 0xA4,
   cmd_j2534_write_message = 0xA5,
   cmd_j2534_periodic_message = 0xA6,
+  cmd_j2534_misc = 0x20,
 };
 
 enum j2534_term_t {
@@ -115,11 +117,16 @@ typedef struct {
   };
 } CANRxFrame;
 
-
+void sleep_ms(int milliseconds);
+void enQueue(PASSTHRU_MSG msg);
+PASSTHRU_MSG deQueue(void);
+void clearQueue(void);
+int sizeQueue(void);
 char* parsemsg(PASSTHRU_MSG *msg);
-
 void check_debug_log(void);
 void last_error(const char *fmt, ...);
 char* getLastError();
-
+uint16_t covertPacketToBuffer(packet_t *packet, uint8_t *buffer);
+void convertPacketToPMSG(packet_t* packet, PASSTHRU_MSG* pMsg);
+bool PASSTHRU_MSG_To_CANTxFrame(PASSTHRU_MSG *pMsg, CANTxFrame *canTx);
 #endif // __UTILS_H
