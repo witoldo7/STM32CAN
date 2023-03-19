@@ -64,6 +64,16 @@
 #define PASS_FILTER                         0x01
 #define BLOCK_FILTER                        0x02
 #define FLOW_CONTROL_FILTER                 0x03
+
+#define ISO15765_FRAME_PAD          0x0040
+#define ISO15765_ADDR_TYPE          0x0080      // Defined above
+#define CAN_29BIT_ID                0x0100      // Defined above
+#define WAIT_P3_MIN_ONLY            0x0200
+#define SCI_MODE                    0x400000
+#define SCI_TX_VOLTAGE              0x800000
+#define CAN_FD_BRS                  0x1000000   // 0 - Data with arbitration speed, 1 = data with CAN_FD_DATA_PHASE_RATE
+#define CAN_FD_FORMAT               0x2000000   // 0 - CAN 2.0, 1 - CAN FD format
+
 typedef struct {
   uint64_t Parameter;
   uint64_t Value;

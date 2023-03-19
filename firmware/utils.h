@@ -112,6 +112,7 @@ typedef struct {
 } f_packet_t;
 
 void registerHsCanCallback(bool (CANRxFrame *rxmsg, packet_t *packet));
+void registerSwCanCallback(bool (CANRxFrame *rxmsg, packet_t *packet));
 void swab(uint16_t *word);
 uint16_t getSupplyVoltage(void);
 void get_vbat(uint8_t *vbat);

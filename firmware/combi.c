@@ -569,7 +569,7 @@ bool readflash(LONG start_addr, LONG size) {
   LONG curr_addr;
   uint8_t flash_buf[256];
   packet_t tx_packet, rx_packet;
-  uint8_t buffer[IN_PACKETSIZE] = {0};
+  uint8_t buffer[300] = {0};
   uint8_t buffsize = 0;
 
   tx_packet.cmd_code = cmd_bdm_read_flash;
