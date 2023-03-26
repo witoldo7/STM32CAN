@@ -11,6 +11,49 @@
 
 #include <stdbool.h>
 #include "j2534.h"
+#include <libusb.h>
+
+#if defined(_MSC_VER)
+#define snprintf _snprintf
+#define THREAD_RETURN_VALUE	0
+typedef HANDLE semaphore_t;
+typedef HANDLE thread_t;
+
+#if defined(__CYGWIN__)
+typedef DWORD thread_return_t;
+#else
+#include <process.h>
+typedef unsigned thread_return_t;
+#endif
+
+semaphore_t semaphore_create(char* semname) ;
+void semaphore_give(semaphore_t semaphore);
+void semaphore_take(semaphore_t semaphore);
+void semaphore_destroy(semaphore_t semaphore);
+int thread_create(thread_t *thread,
+	thread_return_t (__stdcall *thread_entry)(void *arg), void *arg);
+void thread_join(thread_t thread);
+#else
+#include <fcntl.h>
+#include <pthread.h>
+#include <unistd.h>
+#include <semaphore.h>
+
+#define _snprintf_s(a,b,c,...) snprintf(a,b,__VA_ARGS__)
+#define strcpy_s(a,b,...) strcpy(a,__VA_ARGS__)
+
+#define THREAD_RETURN_VALUE	NULL
+typedef pthread_t thread_t;
+typedef sem_t * semaphore_t;
+
+semaphore_t semaphore_create(char* semname);
+void semaphore_give(semaphore_t semaphore);
+void semaphore_take(semaphore_t semaphore);
+void semaphore_destroy(semaphore_t semaphore);
+int thread_create(thread_t *thread,
+	void *(*thread_entry)(void *arg), void *arg);
+void thread_join(thread_t thread);
+#endif
 
 #define MAX_LEN	80
 enum j2534_command_t {
@@ -117,16 +160,22 @@ typedef struct {
   };
 } CANRxFrame;
 
+extern semaphore_t slock;
+
+void UnlockRx();
+void LockRx();
+void Lock(semaphore_t sem, uint32_t counter);
+void Unlock(semaphore_t sem, uint32_t counter);
 void sleep_ms(int milliseconds);
 void enQueue(PASSTHRU_MSG msg);
-PASSTHRU_MSG deQueue(void);
+bool deQueue(PASSTHRU_MSG* msg);
 void clearQueue(void);
-int sizeQueue(void);
+uint32_t sizeQueue(void);
 char* parsemsg(PASSTHRU_MSG *msg);
 void check_debug_log(void);
 void last_error(const char *fmt, ...);
 char* getLastError();
 uint16_t covertPacketToBuffer(packet_t *packet, uint8_t *buffer);
-void convertPacketToPMSG(packet_t* packet, PASSTHRU_MSG* pMsg);
+void convertPacketToPMSG(uint8_t* data, uint16_t len, PASSTHRU_MSG* pMsg);
 bool PASSTHRU_MSG_To_CANTxFrame(PASSTHRU_MSG *pMsg, CANTxFrame *canTx);
 #endif // __UTILS_H

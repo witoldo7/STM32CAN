@@ -316,7 +316,7 @@
 #define SW_CAN_HV_RX				0x00010000	// SWCAN Channels Only
 #define SW_CAN_HS_RX				0x00020000	// SWCAN Channels Only
 #define SW_CAN_NS_RX				0x00040000	// SWCAN Channels Only
-#define OVERFLOW					0x00010000	// Analog Input Channels Only
+#define ANALOG_OVERFLOW				0x00010000	// Analog Input Channels Only
 //#define CAN_FD_BRS					0x01000000	// 0 - Data with arbitration speed, 1 = data with CAN_FD_DATA_PHASE_RATE
 //#define CAN_FD_FORMAT				0x02000000
 #define CAN_FD_ESI					0x04000000	// 0 - sender in the Error Active State, 1 - pasive
