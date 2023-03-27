@@ -54,11 +54,16 @@ const ADCConversionGroup adcgrpcfg1 = {
   }
 };
 
-void get_vbat(uint8_t *vbat) {
+uint16_t getSupplyVoltage(void) {
   uint16_t voltage = 0;
   adcConvert(&ADCD1, &adcgrpcfg1, samples1, ADC_GRP1_BUF_DEPTH);
   voltage = samples1[0] / 3;
   cacheBufferInvalidate(samples1, sizeof (samples1) / sizeof (adcsample_t));
+  return voltage;
+}
+
+void get_vbat(uint8_t *vbat) {
+  uint16_t voltage = getSupplyVoltage();
   memcpy(vbat, &voltage, 2);
 }
 //------------------------ADC-END-----------------------------
@@ -284,4 +289,41 @@ void swab(uint16_t *word) {
     *word = tmp >> 8 | *word;
   }
   return;
+}
+
+bool prepareReplyPacket(packet_t *reply, packet_t *source, uint8_t *data,
+                          uint16_t data_len, uint8_t term) {
+  if ((reply == (packet_t*)0x0) || (source == (packet_t*)0x0)) {
+    return false;
+  }
+  else {
+    reply->cmd_code = source->cmd_code;
+    reply->data_len = data_len;
+    if ((data != 0) && (data_len != 0)) {
+      memcpy(reply->data, data, data_len);
+    }
+    reply->term = term;
+  }
+  return true;
+}
+
+uint8_t covertPacketToBuffer(packet_t *packet, uint8_t *buffer) {
+  uint8_t size = 0;
+  if (packet != (packet_t*)0x0) {
+    buffer[0] = packet->cmd_code;
+    buffer[1] = (uint8_t)(packet->data_len >> 8);
+    buffer[2] = (uint8_t)packet->data_len;
+    if (packet->data_len != 0) {
+      memcpy(buffer + 3, packet->data, packet->data_len);
+      size = packet->data_len + 3;
+      buffer[size] = packet->term;
+      size++;
+    }
+    else {
+      buffer[3] = packet->term;
+      size = 4;
+    }
+    return size;
+  }
+  return size;
 }

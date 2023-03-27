@@ -10,8 +10,7 @@
 #define __COMBI_H__
 
 #include "ch.h"
-
-typedef struct packet_t packet_t;
+#include "utils.h"
 
 enum combi_command_t {
   //BRD
@@ -50,6 +49,7 @@ enum combi_command_t {
   cmd_can_filter = 0x84,
   cmd_can_rxframe_fdcan = 0x85,
   cmd_can_txframe_fdcan = 0x86,
+  cmd_can_j2534_ioctl = 0x87,
   cmd_can_ecuconnect = 0x89,
   cmd_can_readflash = 0x8A,
   cmd_can_writeflash = 0x8B,
@@ -61,21 +61,10 @@ enum combi_command_t {
 enum open_command_t {
    combi_close = 0x00,
    combi_open = 0x01,
-   fdcan_open = 0x02
+   fdcan_open = 0x02,
+   j2534_open = 0x03
 };
 
-struct packet_t {
-  uint8_t cmd_code;	// command code
-  uint16_t data_len;	// data block length
-  uint8_t *data;		// optional data block
-  uint8_t term;		// terminator
-};
-
-extern bool CombiSendReplyPacket(packet_t *reply, packet_t *source,
-                                 uint8_t *data, uint16_t data_len,
-                                 uint8_t term);
-extern uint8_t CombiSendPacket(packet_t *packet, uint8_t *buffer);
-extern void rx_can_msg(CANRxFrame *rxmsg, packet_t *packet);
 extern bool exec_cmd_board(packet_t *rx_packet, packet_t *tx_packet);
 extern bool exec_cmd_bdm(packet_t *rx_packet, packet_t *tx_packet);
 extern bool exec_cmd_swcan(packet_t *rx_packet, packet_t *tx_packet);

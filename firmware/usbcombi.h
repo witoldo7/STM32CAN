@@ -9,12 +9,12 @@
 #ifndef USBCOMBI_H
 #define USBCOMBI_H
 
-#define IN_PACKETSIZE  0x40
-#define OUT_PACKETSIZE 0x40
+#define IN_PACKETSIZE  0x80
+#define OUT_PACKETSIZE 0x80
 #define EP_IN 2
 #define EP_OUT 2
-extern uint8_t receiveBuf[OUT_PACKETSIZE];
-extern uint8_t transferBuf[IN_PACKETSIZE];
+extern uint8_t receiveBuf[OUT_PACKETSIZE*2];
+extern uint8_t transferBuf[IN_PACKETSIZE*2];
 
 extern const USBConfig usb_config;
 extern const SerialUSBConfig serusbcfg1;

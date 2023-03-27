@@ -3,7 +3,7 @@
 # NOTE: Can be overridden externally.
 #
 
-# Compiler options here.
+# Compiler options here. -Og -ggdb 
 ifeq ($(USE_OPT),)
   USE_OPT = -Og -ggdb -fomit-frame-pointer -falign-functions=16
 endif
@@ -119,7 +119,7 @@ LDSCRIPT= $(STARTUPLD)/STM32H750xB.ld
 CSRC = $(ALLCSRC) \
        $(BOARDSRC) \
        $(BDMSRC) \
-       usbcombi.c utils.c combi.c main.c
+       usbcombi.c utils.c combi.c j2534.c main.c
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.

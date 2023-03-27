@@ -79,10 +79,11 @@
 #define SCI_B_ENGINE					0x09
 #define SCI_B_TRANS						0x0A
 
-
 //
 // J2534-2 ProtocolID Values
 //
+#define ISO15765_FD_PS					0x0001000C
+#define CAN_FD_PS						0x0001000D
 #define J1850VPW_PS						0x00008000
 #define J1850PWM_PS						0x00008001
 #define ISO9141_PS						0x00008002
@@ -124,7 +125,6 @@
 #define ANALOG_IN_CH2					0x0000C001
 #define ANALOG_IN_CH32					0x0000C01F
 
-
 //
 // J2534-1 v04.04 Error Values
 //
@@ -158,7 +158,6 @@
 #define ERR_INVALID_BAUDRATE			0x19	// The desired baud rate cannot be achieved within the tolerance specified in SAE J2534-1 Section 6.5
 #define ERR_INVALID_DEVICE_ID			0x1A	// Device ID invalid.
 
-
 //
 // J2534-1 v04.04 Connect Flags
 //
@@ -167,14 +166,12 @@
 #define CAN_ID_BOTH							0x0800
 #define ISO9141_K_LINE_ONLY					0x1000
 
-
 //
 // J2534-1 v04.04 Filter Type Values
 //
 #define PASS_FILTER							0x00000001
 #define BLOCK_FILTER						0x00000002
 #define FLOW_CONTROL_FILTER					0x00000003
-
 
 //
 // J2534-1 v04.04 Programming Voltage Pin Numbers
@@ -188,13 +185,11 @@
 #define SAE_J1962_CONNECTOR_PIN_14			14
 #define SAE_J1962_CONNECTOR_PIN_15			15        // Short to ground only
 
-
 //
 // J2534-1 v04.04 Programming Voltage Values
 //
 #define SHORT_TO_GROUND						0xFFFFFFFE
 #define VOLTAGE_OFF							0xFFFFFFFF
-
 
 //
 // J2534-1 v04.04 API Version Values
@@ -208,7 +203,7 @@
 //
 #define GET_CONFIG								0x01	// pInput = SCONFIG_LIST, pOutput = NULL
 #define SET_CONFIG								0x02	// pInput = SCONFIG_LIST, pOutput = NULL
-#define READ_VBATT								0x03	// pInput = NULL, pOutput = unsigned long
+#define READ_VBATT								0x03	// pInput = NULL, pOutput = uint32_t
 #define FIVE_BAUD_INIT							0x04	// pInput = SBYTE_ARRAY, pOutput = SBYTE_ARRAY
 #define FAST_INIT								0x05	// pInput = PASSTHRU_MSG, pOutput = PASSTHRU_MSG
 #define CLEAR_TX_BUFFER							0x07	// pInput = NULL, pOutput = NULL
@@ -218,8 +213,7 @@
 #define CLEAR_FUNCT_MSG_LOOKUP_TABLE			0x0B	// pInput = NULL, pOutput = NULL
 #define ADD_TO_FUNCT_MSG_LOOKUP_TABLE			0x0C	// pInput = SBYTE_ARRAY, pOutput = NULL
 #define DELETE_FROM_FUNCT_MSG_LOOKUP_TABLE		0x0D	// pInput = SBYTE_ARRAY, pOutput = NULL
-#define READ_PROG_VOLTAGE						0x0E	// pInput = NULL, pOutput = unsigned long
-
+#define READ_PROG_VOLTAGE						0x0E	// pInput = NULL, pOutput = uint32_t
 
 //
 // J2534-2 IOCTL ID Values
@@ -227,8 +221,7 @@
 #define SW_CAN_HS								0x00008000	// pInput = NULL, pOutput = NULL
 #define SW_CAN_NS								0x00008001	// pInput = NULL, pOutput = NULL
 #define SET_POLL_RESPONSE						0x00008002	// pInput = SBYTE_ARRAY, pOutput = NULL
-#define BECOME_MASTER							0x00008003	// pInput = unsigned char, pOutput = NULL
-
+#define BECOME_MASTER							0x00008003	// pInput = uint8_t, pOutput = NULL
 
 //
 // J2534-1 v04.04 Configuration Parameter Values
@@ -271,7 +264,6 @@
 #define FIVE_BAUD_MOD			0x21	// ISO9141 or ISO14230: 0 (ISO 9141-2/14230-4), 1 (Inv KB2), 2 (Inv Addr), 3 (ISO 9141) [0]
 #define ISO15765_WFT_MAX		0x25	// ISO15765: 0x0-0xFF [0]
 
-
 //
 // J2534-2 Configuration Parameter Values
 // Default value is enclosed in square brackets "[" and "]"
@@ -290,14 +282,12 @@
 #define INPUT_RANGE_LOW					0x00008026	// ANALOG READ-ONLY: 0x80000000-0x7FFFFFFF (-2147483648-2147483647)
 #define INPUT_RANGE_HIGH				0x00008027	// ANALOG READ-ONLY: 0x80000000-0x7FFFFFFF (-2147483648-2147483647)
 
-
 //
 // J2534-2 Mixed-Mode/Format CAN Definitions
 //
 #define CAN_MIXED_FORMAT_OFF			0	// Messages will be treated as ISO 15765 ONLY.
 #define CAN_MIXED_FORMAT_ON				1	// Messages will be treated as either ISO 15765 or an unformatted CAN frame.
 #define CAN_MIXED_FORMAT_ALL_FRAMES		2	// Messages will be treated as ISO 15765, an unformatted CAN frame, or both.
-
 
 //
 // J2534-2 Analog Channel Averaging Method Definitions
@@ -307,18 +297,18 @@
 #define MIN_LIMIT_AVERAGE		0x00000002        // Choose the lowest value
 #define MEDIAN_AVERAGE			0x00000003        // Choose arithmetic median
 
-
 //
 // J2534-1 v04.04 RxStatus Definitions
 //
-#define TX_MSG_TYPE					0x0001
-#define START_OF_MESSAGE			0x0002
+#define TX_MSG_TYPE					0x0001 // value of the bit #0 states if the message is a transmit loopback (value = 1) or not (value = 0)
+#define START_OF_MESSAGE			0x0002 // value of the bit #1 states if the message is a Start indication (value =1) or not (value = 0).
+#define TX_SUCCESS                  0x0004 // value of the bit #3 states if the message is a TxDone indication (value = 1) or not (value = 0)
 #define RX_BREAK					0x0004
 #define TX_INDICATION				0x0008
-#define ISO15765_PADDING_ERROR		0x0010
+#define ISO15765_PADDING_ERROR		0x0010 //ERROR_IND
+#define ERROR_IND					0x0010 
 #define ISO15765_ADDR_TYPE			0x0080
-//#define CAN_29BIT_ID				0x0100		// Defined above
-
+//#define CAN_29BIT_ID				0x0100		// value of the bit #8 states if the message is standard (11bit, value = 0) or extended (29bit, value = 1)
 
 //
 // J2534-2 RxStatus Definitions
@@ -326,8 +316,11 @@
 #define SW_CAN_HV_RX				0x00010000	// SWCAN Channels Only
 #define SW_CAN_HS_RX				0x00020000	// SWCAN Channels Only
 #define SW_CAN_NS_RX				0x00040000	// SWCAN Channels Only
-#define OVERFLOW					0x00010000	// Analog Input Channels Only
-
+#define ANALOG_OVERFLOW				0x00010000	// Analog Input Channels Only
+//#define CAN_FD_BRS					0x01000000	// 0 - Data with arbitration speed, 1 = data with CAN_FD_DATA_PHASE_RATE
+//#define CAN_FD_FORMAT				0x02000000
+#define CAN_FD_ESI					0x04000000	// 0 - sender in the Error Active State, 1 - pasive
+#define RX_MSG_TRUNCATED			0x8000000	// 0 - full msg returned, 1 - 4128 bytes returned, rest must be read from extended data array
 
 //
 // J2534-1 v04.04 TxFlags Definitions
@@ -338,67 +331,66 @@
 #define WAIT_P3_MIN_ONLY			0x0200
 #define SCI_MODE					0x400000
 #define SCI_TX_VOLTAGE				0x800000
-
+#define CAN_FD_BRS					0x1000000	// 0 - Data with arbitration speed, 1 = data with CAN_FD_DATA_PHASE_RATE
+#define CAN_FD_FORMAT				0x2000000	// 0 - CAN 2.0, 1 - CAN FD format
 
 //
 // J2534-2 TxFlags Definitions
 //
 #define SW_CAN_HV_TX				0x00000400
 
+// UDEFS
+#define MAX_J2534_MESSAGES			0x0A
 
 //
 // J2534-1 v04.04 Structure Definitions
 //
 typedef struct
 {
-	unsigned long	Parameter;	// Name of parameter
-	unsigned long	Value;		// Value of the parameter
+	uint32_t	Parameter;	// Name of parameter
+	uint32_t	Value;		// Value of the parameter
 } SCONFIG;
-
 
 typedef struct
 {
-	unsigned long	NumOfParams;	// Number of SCONFIG elements
+	uint32_t	NumOfParams;	// Number of SCONFIG elements
 	SCONFIG*		ConfigPtr;		// Array of SCONFIG
 } SCONFIG_LIST;
 
-
 typedef struct
 {
-	unsigned long	NumOfBytes;		// Number of bytes in the array
-	unsigned char*	BytePtr;		// Array of bytes
+	uint32_t	NumOfBytes;		// Number of bytes in the array
+	uint8_t*	BytePtr;		// Array of bytes
 } SBYTE_ARRAY;
 
-
 typedef struct
 {
-	unsigned long	ProtocolID;
-	unsigned long	RxStatus;
-	unsigned long	TxFlags;
-	unsigned long	Timestamp;
-	unsigned long	DataSize;
-	unsigned long	ExtraDataIndex;
-	unsigned char	Data[4128];
+	uint32_t	ProtocolID;
+	uint32_t	RxStatus;
+	uint32_t	TxFlags;
+	uint32_t	Timestamp;
+	uint32_t	DataSize;
+	uint32_t	ExtraDataIndex;
+	uint8_t		Data[4128];
 } PASSTHRU_MSG;
 
 //
 // J2534-1 v04.04 Function Prototypes
 //
-J2534DLL_API long PTAPI	PassThruOpen(void *pName, unsigned long *pDeviceID);
-J2534DLL_API long PTAPI	PassThruClose(unsigned long DeviceID);
-J2534DLL_API long PTAPI	PassThruConnect(unsigned long DeviceID, unsigned long ProtocolID, unsigned long Flags, unsigned long BaudRate, unsigned long *pChannelID);
-J2534DLL_API long PTAPI	PassThruDisconnect(unsigned long ChannelID);
-J2534DLL_API long PTAPI	PassThruReadMsgs(unsigned long ChannelID, PASSTHRU_MSG *pMsg, unsigned long *pNumMsgs, unsigned long Timeout);
-J2534DLL_API long PTAPI	PassThruWriteMsgs(unsigned long ChannelID, PASSTHRU_MSG *pMsg, unsigned long *pNumMsgs, unsigned long Timeout);
-J2534DLL_API long PTAPI	PassThruStartPeriodicMsg(unsigned long ChannelID, PASSTHRU_MSG *pMsg, unsigned long *pMsgID, unsigned long TimeInterval);
-J2534DLL_API long PTAPI	PassThruStopPeriodicMsg(unsigned long ChannelID, unsigned long MsgID);
-J2534DLL_API long PTAPI	PassThruStartMsgFilter(unsigned long ChannelID, unsigned long FilterType, PASSTHRU_MSG *pMaskMsg, PASSTHRU_MSG *pPatternMsg, PASSTHRU_MSG *pFlowControlMsg, unsigned long *pFilterID);
-J2534DLL_API long PTAPI	PassThruStopMsgFilter(unsigned long ChannelID, unsigned long FilterID);
-J2534DLL_API long PTAPI	PassThruSetProgrammingVoltage(unsigned long DeviceID, unsigned long PinNumber, unsigned long Voltage);
-J2534DLL_API long PTAPI	PassThruReadVersion(unsigned long DeviceID, char *pFirmwareVersion, char *pDllVersion, char *pApiVersion);
-J2534DLL_API long PTAPI	PassThruGetLastError(char *pErrorDescription);
-J2534DLL_API long PTAPI	PassThruIoctl(unsigned long ChannelID, unsigned long IoctlID, void *pInput, void *pOutput);
-
+J2534DLL_API uint32_t PTAPI	PassThruOpen(void *pName, uint32_t *pDeviceID);
+J2534DLL_API uint32_t PTAPI	PassThruClose(uint32_t DeviceID);
+J2534DLL_API uint32_t PTAPI	PassThruConnect(uint32_t DeviceID, uint32_t ProtocolID, uint32_t Flags, uint32_t BaudRate, uint32_t *pChannelID);
+J2534DLL_API uint32_t PTAPI	PassThruDisconnect(uint32_t ChannelID);
+J2534DLL_API uint32_t PTAPI	PassThruReadMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t *pNumMsgs, uint32_t Timeout);
+J2534DLL_API uint32_t PTAPI	PassThruWriteMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t *pNumMsgs, uint32_t Timeout);
+J2534DLL_API uint32_t PTAPI	PassThruStartPeriodicMsg(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t *pMsgID, uint32_t TimeInterval);
+J2534DLL_API uint32_t PTAPI	PassThruStopPeriodicMsg(uint32_t ChannelID, uint32_t MsgID);
+J2534DLL_API uint32_t PTAPI	PassThruStartMsgFilter(uint32_t ChannelID, uint32_t FilterType, PASSTHRU_MSG *pMaskMsg, PASSTHRU_MSG *pPatternMsg, PASSTHRU_MSG *pFlowControlMsg, uint32_t *pFilterID);
+J2534DLL_API uint32_t PTAPI	PassThruStopMsgFilter(uint32_t ChannelID, uint32_t FilterID);
+J2534DLL_API uint32_t PTAPI	PassThruSetProgrammingVoltage(uint32_t DeviceID, uint32_t PinNumber, uint32_t Voltage);
+J2534DLL_API uint32_t PTAPI	PassThruReadVersion(uint32_t DeviceID, char *pFirmwareVersion, char *pDllVersion, char *pApiVersion);
+J2534DLL_API uint32_t PTAPI	PassThruGetLastError(char *pErrorDescription);
+J2534DLL_API uint32_t PTAPI	PassThruIoctl(uint32_t ChannelID, uint32_t IoctlID, void *pInput, void *pOutput);
 
 //
 // J2534-1 v04.04 Function Typedefs
@@ -409,20 +401,19 @@ J2534DLL_API long PTAPI	PassThruIoctl(unsigned long ChannelID, unsigned long Ioc
 //     return FALSE;
 // pPassThruConnectFunc(DeviceID, CAN, CAN_29BIT_ID, 500000, &ChannelID);
 //
-typedef long	(PTAPI *PTOPEN)(void *pName, unsigned long *pDeviceID);
-typedef long	(PTAPI *PTCLOSE)(unsigned long DeviceID);
-typedef long	(PTAPI *PTCONNECT)(unsigned long DeviceID, unsigned long ProtocolID, unsigned long Flags, unsigned long BaudRate, unsigned long *pChannelID);
-typedef long	(PTAPI *PTDISCONNECT)(unsigned long ChannelID);
-typedef long	(PTAPI *PTREADMSGS)(unsigned long ChannelID, PASSTHRU_MSG *pMsg, unsigned long *pNumMsgs, unsigned long Timeout);
-typedef long	(PTAPI *PTWRITEMSGS)(unsigned long ChannelID, PASSTHRU_MSG *pMsg, unsigned long *pNumMsgs, unsigned long Timeout);
-typedef long	(PTAPI *PTSTARTPERIODICMSG)(unsigned long ChannelID, PASSTHRU_MSG *pMsg, unsigned long *pMsgID, unsigned long TimeInterval);
-typedef long	(PTAPI *PTSTOPPERIODICMSG)(unsigned long ChannelID, unsigned long MsgID);
-typedef long	(PTAPI *PTSTARTMSGFILTER)(unsigned long ChannelID, unsigned long FilterType, PASSTHRU_MSG *pMaskMsg, PASSTHRU_MSG *pPatternMsg, PASSTHRU_MSG *pFlowControlMsg, unsigned long *pFilterID);
-typedef long	(PTAPI *PTSTOPMSGFILTER)(unsigned long ChannelID, unsigned long FilterID);
-typedef long	(PTAPI *PTSETPROGRAMMINGVOLTAGE)(unsigned long DeviceID, unsigned long PinNumber, unsigned long Voltage);
-typedef long	(PTAPI *PTREADVERSION)(unsigned long DeviceID, char *pFirmwareVersion, char *pDllVersion, char *pApiVersion);
-typedef long	(PTAPI *PTGETLASTERROR)(char *pErrorDescription);
-typedef long	(PTAPI *PTIOCTL)(unsigned long ChannelID, unsigned long IoctlID, void *pInput, void *pOutput);
-
+typedef uint32_t (PTAPI *PTOPEN)(void *pName, uint32_t *pDeviceID);
+typedef uint32_t (PTAPI *PTCLOSE)(uint32_t DeviceID);
+typedef uint32_t (PTAPI *PTCONNECT)(uint32_t DeviceID, uint32_t ProtocolID, uint32_t Flags, uint32_t BaudRate, uint32_t *pChannelID);
+typedef uint32_t (PTAPI *PTDISCONNECT)(uint32_t ChannelID);
+typedef uint32_t (PTAPI *PTREADMSGS)(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t *pNumMsgs, uint32_t Timeout);
+typedef uint32_t (PTAPI *PTWRITEMSGS)(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t *pNumMsgs, uint32_t Timeout);
+typedef uint32_t (PTAPI *PTSTARTPERIODICMSG)(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t *pMsgID, uint32_t TimeInterval);
+typedef uint32_t (PTAPI *PTSTOPPERIODICMSG)(uint32_t ChannelID, uint32_t MsgID);
+typedef uint32_t (PTAPI *PTSTARTMSGFILTER)(uint32_t ChannelID, uint32_t FilterType, PASSTHRU_MSG *pMaskMsg, PASSTHRU_MSG *pPatternMsg, PASSTHRU_MSG *pFlowControlMsg, uint32_t *pFilterID);
+typedef uint32_t (PTAPI *PTSTOPMSGFILTER)(uint32_t ChannelID, uint32_t FilterID);
+typedef uint32_t (PTAPI *PTSETPROGRAMMINGVOLTAGE)(uint32_t DeviceID, uint32_t PinNumber, uint32_t Voltage);
+typedef uint32_t (PTAPI *PTREADVERSION)(uint32_t DeviceID, char *pFirmwareVersion, char *pDllVersion, char *pApiVersion);
+typedef uint32_t (PTAPI *PTGETLASTERROR)(char *pErrorDescription);
+typedef uint32_t (PTAPI *PTIOCTL)(uint32_t ChannelID, uint32_t IoctlID, void *pInput, void *pOutput);
 
 #endif // __J2534_H

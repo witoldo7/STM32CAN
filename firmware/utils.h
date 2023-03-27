@@ -97,12 +97,30 @@ typedef struct {
   uint32_t      TxElmtSize;
 } CANRamConfig;
 
+typedef struct {
+  uint8_t cmd_code; // command code
+  uint16_t data_len;    // data block length
+  uint8_t *data;        // optional data block
+  uint8_t term;     // terminator
+} packet_t;
+
+typedef struct {
+  uint8_t cmd_code; // command code
+  uint16_t data_len;    // data block length
+  uint8_t data[72];        // optional data block
+  uint8_t term;     // terminator
+} f_packet_t;
+
+void registerHsCanCallback(bool (CANRxFrame *rxmsg, packet_t *packet));
+void registerSwCanCallback(bool (CANRxFrame *rxmsg, packet_t *packet));
 void swab(uint16_t *word);
+uint16_t getSupplyVoltage(void);
 void get_vbat(uint8_t *vbat);
 uint8_t can_fd_dlc2len(uint8_t dlc);
 bool canBaudRate(CANConfig *can_cfg, uint32_t can_baudrate);
 bool canMemorryConfig(CANDriver *canp, CANConfig *can_cfg, CANRamConfig *cfg, CAN_RamAddress *msgRam);
-void canGlobalFilter(CANConfig *can_cfg, uint32_t NonMatchingStd, uint32_t NonMatchingExt,
-                     uint32_t RejectRemoteStd, uint32_t RejectRemoteExt);
+void canGlobalFilter(CANConfig *can_cfg, uint32_t NonMatchingStd, uint32_t NonMatchingExt, uint32_t RejectRemoteStd, uint32_t RejectRemoteExt);
 void canFilter(CAN_RamAddress *msgRam, CAN_Filter *filter);
+bool prepareReplyPacket(packet_t *reply, packet_t *source, uint8_t *data, uint16_t data_len, uint8_t term);
+uint8_t covertPacketToBuffer(packet_t *packet, uint8_t *buffer);
 #endif /* UTILS_H_ */
