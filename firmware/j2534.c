@@ -12,18 +12,18 @@ CAN_RamAddress hscan_ram, swcan_ram;
 
 CANRamConfig hscan_ram_cfg = {
   .MessageRAMOffset = 0,
-  .StdFiltersNbr = 4,
+  .StdFiltersNbr = 8,
   .ExtFiltersNbr = 0,
-  .RxFifo0ElmtsNbr = 4,
-  .RxFifo0ElmtSize = FDCAN_DATA_BYTES_64,
-  .RxFifo1ElmtsNbr = 4,
-  .RxFifo1ElmtSize = FDCAN_DATA_BYTES_64,
-  .RxBuffersNbr = 4,
-  .RxBufferSize = FDCAN_DATA_BYTES_64,
-  .TxEventsNbr = 1,
-  .TxBuffersNbr = 4,
-  .TxFifoQueueElmtsNbr = 4,
-  .TxElmtSize = FDCAN_DATA_BYTES_64
+  .RxFifo0ElmtsNbr = 32,
+  .RxFifo0ElmtSize = FDCAN_DATA_BYTES_8,
+  .RxFifo1ElmtsNbr = 1,
+  .RxFifo1ElmtSize = FDCAN_DATA_BYTES_8,
+  .RxBuffersNbr = 32,
+  .RxBufferSize = FDCAN_DATA_BYTES_8,
+  .TxEventsNbr = 8,
+  .TxBuffersNbr = 8,
+  .TxFifoQueueElmtsNbr = 8,
+  .TxElmtSize = FDCAN_DATA_BYTES_8
 };
 
 CANRamConfig swcan_ram_cfg = {
@@ -76,7 +76,7 @@ bool rx_swcan_msg(CANRxFrame *rxmsg, packet_t *packet) {
   packet->data_len = 10 + rxmsg->DLC;
   return true;
 }
-
+const uint32_t CvtEltSize1[] = {0, 0, 0, 0, 0, 1, 2, 3, 4, 0, 5, 0, 0, 0, 6, 0, 0, 0, 7};
 uint32_t handle_hscan_connect(uint32_t flags, uint32_t baudrate) {
   (void)flags; //TODO
   registerHsCanCallback(&rx_can_msg);
@@ -84,6 +84,9 @@ uint32_t handle_hscan_connect(uint32_t flags, uint32_t baudrate) {
     return ERR_INVALID_BAUDRATE;
   }
   canMemorryConfig(&CAND1, &hsCanConfig, &hscan_ram_cfg, &hscan_ram);
+  hsCanConfig.TXESC = CvtEltSize1[hscan_ram_cfg.TxElmtSize]; // 8 Byte mode only (4 words per message)
+  hsCanConfig.RXESC = CvtEltSize1[hscan_ram_cfg.RxFifo0ElmtSize] << FDCAN_RXESC_F0DS_Pos | CvtEltSize1[hscan_ram_cfg.RxFifo1ElmtSize] << FDCAN_RXESC_F1DS_Pos
+         | CvtEltSize1[hscan_ram_cfg.RxBufferSize] << FDCAN_RXESC_RBDS_Pos;// 8 Byte mode only (4 words per message)
   canGlobalFilter(&hsCanConfig, FDCAN_REJECT, FDCAN_REJECT, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
   canStart(&CAND1, &hsCanConfig);
   return STATUS_NOERROR;
@@ -216,7 +219,7 @@ bool j2534_filter(packet_t *rx_packet, packet_t *tx_packet) {
 
 bool j2534_ioctl(packet_t *rx_packet, packet_t *tx_packet) {
   uint32_t channelID, ioctl, error = ERR_NOT_SUPPORTED;
-  uint8_t retSize = 0;
+  uint8_t retSize = 4;
   memcpy(&channelID, rx_packet->data, 4);
   memcpy(&ioctl, rx_packet->data + 4, 4);
 
@@ -236,11 +239,18 @@ bool j2534_ioctl(packet_t *rx_packet, packet_t *tx_packet) {
   case CLEAR_RX_BUFFER:
     error = STATUS_NOERROR;
     break;
+  case CLEAR_MSG_FILTERS:
+    if (channelID == CAN) {
+      memset(hsFilter, 0, sizeof(hsFilter));
+      for (uint8_t i = 0; i < hscan_ram_cfg.StdFiltersNbr; i++)
+        canFilter(&hscan_ram, &hsFilter[hscanFilterIdx]);
+      error = STATUS_NOERROR;
+    }
+    break;
   case FIVE_BAUD_INIT:
   case FAST_INIT:
   case CLEAR_TX_BUFFER:
   case CLEAR_PERIODIC_MSGS:
-  case CLEAR_MSG_FILTERS:
   case CLEAR_FUNCT_MSG_LOOKUP_TABLE:
   case ADD_TO_FUNCT_MSG_LOOKUP_TABLE:
   case DELETE_FROM_FUNCT_MSG_LOOKUP_TABLE:
@@ -254,26 +264,33 @@ bool j2534_ioctl(packet_t *rx_packet, packet_t *tx_packet) {
 }
 
 bool j2534_write_message(packet_t *rx_packet, packet_t *tx_packet) {
-  uint32_t channelID, error = ERR_NOT_SUPPORTED;
+  uint32_t channelID, timeout, error = ERR_NOT_SUPPORTED;
   memcpy(&channelID, rx_packet->data, 4);
+  memcpy(&timeout, rx_packet->data + 4, 4);
+  if (timeout == 0)
+    timeout = 100;
 
   switch (channelID) {
   case CAN:
   case CAN_PS:
-  case ISO15765:
     CANTxFrame tx = {0};
     memcpy(&tx, rx_packet->data + 8, rx_packet->data_len - 8);
-    if (canTransmit(&CAND1, CAN_ANY_MAILBOX, &tx, TIME_MS2I(100)) == MSG_OK) {
+    if (canTransmit(&CAND1, CAN_ANY_MAILBOX, &tx, TIME_MS2I(timeout)) == MSG_OK) {
       error = STATUS_NOERROR;
+    } else {
+      error = ERR_TIMEOUT;
     }
     break;
   case SW_CAN_PS:
     CANTxFrame swtx = {0};
     memcpy(&swtx, rx_packet->data + 8, rx_packet->data_len - 8);
-    if (canTransmit(&CAND2, CAN_ANY_MAILBOX, &swtx, TIME_MS2I(100)) == MSG_OK) {
+    if (canTransmit(&CAND2, CAN_ANY_MAILBOX, &swtx, TIME_MS2I(timeout)) == MSG_OK) {
       error = STATUS_NOERROR;
+    } else {
+      error = ERR_TIMEOUT;
     }
     break;
+  case ISO15765:
   default:
     break;
   }
