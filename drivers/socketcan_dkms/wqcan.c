@@ -20,8 +20,8 @@
 
 /* vendor and product id */
 #define WQCAN_MODULE_NAME "wqcan"
-#define WQCAN_VENDOR_ID 0xffff
-#define WQCAN_PRODUCT_ID 0x0005
+#define WQCAN_VENDOR_ID   0xffff
+#define WQCAN_PRODUCT_ID  0x0005
 
 /* driver constants */
 #define WQCAN_MAX_RX_URBS 20
@@ -34,56 +34,57 @@
 #define WQCAN_USB_RX_BUFF_SIZE 64 * 2
 
 /* WQCAN endpoint numbers */
-#define WQCAN_USB_EP_IN 2
+#define WQCAN_USB_EP_IN  2
 #define WQCAN_USB_EP_OUT 2
 
 /* WQCAN command id */
-#define WQCAN_CMD_ACK 0x00
+#define WQCAN_CMD_ACK  0x00
 #define WQCAN_CMD_NACK 0xFF
 
-#define WQCAN_CMD_READ_FW_VERSION 0x20
+#define WQCAN_CMD_READ_FW_VERSION        0x20
 
-#define WQCAN_CMD_SWCAN_OPEN 0x60
-#define WQCAN_CMD_SWCAN_BIT_RATE 0x61
-#define WQCAN_CMD_SWCAN_RECEIVE_MESSAGE 0x62
-#define WQCAN_CMD_SWCAN_TRANSMIT_MESSAGE 0x63
+#define WQCAN_CMD_SWCAN_OPEN             0x68
+#define WQCAN_CMD_SWCAN_BIT_RATE         0x69
+#define WQCAN_CMD_SWCAN_FILTER           0x6A
+#define WQCAN_CMD_SWCAN_RECEIVE_MESSAGE  0x6B
+#define WQCAN_CMD_SWCAN_TRANSMIT_MESSAGE 0x6C
 
-#define WQCAN_CMD_CAN_OPEN 0x80
-#define WQCAN_CMD_CAN_BIT_RATE 0x81
-#define WQCAN_CMD_CAN_FILTER 0x84
-#define WQCAN_CMD_CAN_RECEIVE_MESSAGE 0x85
-#define WQCAN_CMD_CAN_TRANSMIT_MESSAGE 0x86
+#define WQCAN_CMD_CAN_OPEN               0x60
+#define WQCAN_CMD_CAN_BIT_RATE           0x61
+#define WQCAN_CMD_CAN_FILTER             0x62
+#define WQCAN_CMD_CAN_RECEIVE_MESSAGE    0x63
+#define WQCAN_CMD_CAN_TRANSMIT_MESSAGE   0x64
 
-#define WQCAN_CAN_XTD 0b00000001
-#define WQCAN_CAN_RTR 0b00000010
-#define WQCAN_CAN_ESI 0b00000100
-#define WQCAN_CAN_BRS 0b00001000
-#define WQCAN_CAN_FDF 0b00010000
-#define WQCAN_CAN_ANMF 0b00100000
-#define WQCAN_CAN_EFC 0b00100000
+#define WQCAN_CAN_XTD                   0b00000001
+#define WQCAN_CAN_RTR                   0b00000010
+#define WQCAN_CAN_ESI                   0b00000100
+#define WQCAN_CAN_BRS                   0b00001000
+#define WQCAN_CAN_FDF                   0b00010000
+#define WQCAN_CAN_ANMF                  0b00100000
+#define WQCAN_CAN_EFC                   0b00100000
 
 /* Data Bit Timing & Prescaler Register (DBTP) */
-#define DBTP_TDC			BIT(23)
-#define DBTP_DBRP_MASK		GENMASK(20, 16)
-#define DBTP_DTSEG1_MASK	GENMASK(12, 8)
-#define DBTP_DTSEG2_MASK	GENMASK(7, 4)
-#define DBTP_DSJW_MASK		GENMASK(3, 0)
+#define DBTP_TDC            BIT(23)
+#define DBTP_DBRP_MASK      GENMASK(20, 16)
+#define DBTP_DTSEG1_MASK    GENMASK(12, 8)
+#define DBTP_DTSEG2_MASK    GENMASK(7, 4)
+#define DBTP_DSJW_MASK      GENMASK(3, 0)
 
 /* Nominal Bit Timing & Prescaler Register (NBTP) */
-#define NBTP_NSJW_MASK		GENMASK(31, 25)
-#define NBTP_NBRP_MASK		GENMASK(24, 16)
-#define NBTP_NTSEG1_MASK	GENMASK(15, 8)
-#define NBTP_NTSEG2_MASK	GENMASK(6, 0)
+#define NBTP_NSJW_MASK      GENMASK(31, 25)
+#define NBTP_NBRP_MASK      GENMASK(24, 16)
+#define NBTP_NTSEG1_MASK    GENMASK(15, 8)
+#define NBTP_NTSEG2_MASK    GENMASK(6, 0)
 
 /* Transmitter Delay Compensation Register (TDCR) */
-#define TDCR_TDCO_MASK		GENMASK(14, 8)
-#define TDCR_TDCF_MASK		GENMASK(6, 0)
+#define TDCR_TDCO_MASK      GENMASK(14, 8)
+#define TDCR_TDCF_MASK      GENMASK(6, 0)
 
 static const struct can_bittiming_const wqcan_can_fd_bit_timing_max = {
 	.name = "wqcan_can_fd",
-	.tseg1_min = 2,		/* Time segment 1 = prop_seg + phase_seg1 */
+	.tseg1_min = 2,     /* Time segment 1 = prop_seg + phase_seg1 */
 	.tseg1_max = 256,
-	.tseg2_min = 2,		/* Time segment 2 = phase_seg2 */
+	.tseg2_min = 2,     /* Time segment 2 = phase_seg2 */
 	.tseg2_max = 128,
 	.sjw_max = 128,
 	.brp_min = 1,
@@ -93,9 +94,9 @@ static const struct can_bittiming_const wqcan_can_fd_bit_timing_max = {
 
 static const struct can_bittiming_const wqcan_can_fd_bit_timing_data_max = {
 	.name = "wqcan_can_fd",
-	.tseg1_min = 1,		/* Time segment 1 = prop_seg + phase_seg1 */
+	.tseg1_min = 1,     /* Time segment 1 = prop_seg + phase_seg1 */
 	.tseg1_max = 32,
-	.tseg2_min = 1,		/* Time segment 2 = phase_seg2 */
+	.tseg2_min = 1,     /* Time segment 2 = phase_seg2 */
 	.tseg2_max = 16,
 	.sjw_max = 16,
 	.brp_min = 1,
