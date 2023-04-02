@@ -428,14 +428,14 @@
                      PIN_OTYPE_PUSHPULL(PB05) | \
                      PIN_OTYPE_PUSHPULL(PB06_QSPI_BK1_NNCS) | \
                      PIN_OTYPE_PUSHPULL(PB07) | \
-                     PIN_OTYPE_PUSHPULL(PB08_CAN1_RX) | \
+                     PIN_OTYPE_OPENDRAIN(PB08_CAN1_RX) | \
                      PIN_OTYPE_PUSHPULL(PB09_CAN1_TX) | \
                      PIN_OTYPE_PUSHPULL(PB10) | \
                      PIN_OTYPE_PUSHPULL(PB11) | \
-                     PIN_OTYPE_PUSHPULL(PB12_CAN2_RX) | \
+                     PIN_OTYPE_OPENDRAIN(PB12_CAN2_RX) | \
                      PIN_OTYPE_PUSHPULL(PB13_CAN2_TX) | \
                      PIN_OTYPE_PUSHPULL(PB14_SD1_TX) | \
-                     PIN_OTYPE_PUSHPULL(PB15_SD1_RX))
+                     PIN_OTYPE_OPENDRAIN(PB15_SD1_RX))
 
 #define VAL_GPIOB_OSPEEDR               (PIN_OSPEED_SPEED_VERYLOW(PB00) | \
                      PIN_OSPEED_SPEED_HIGH(PB01_VBAT) | \

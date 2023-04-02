@@ -8,15 +8,17 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <usbadapter.h>
 
 #include "ch.h"
 #include "hal.h"
 #include "combi.h"
-#include "usbcombi.h"
 #include "shell.h"
 #include "chprintf.h"
 #include "debug.h"
 #include "j2534.h"
+#include "socketcan.h"
+#include "bdmutility.h"
 
 BaseSequentialStream *GlobalDebugChannel;
 static semaphore_t rxSem;
@@ -47,7 +49,8 @@ void dataReceived(USBDriver *usbp, usbep_t ep) {
   (void)usbp;
   (void)ep;
   chSysLockFromISR();
-  chSemSignalI(&rxSem);
+  chSemSignalI(&rxSem);        //memset(receiveBuf, 0, OUT_PACKETSIZE*2);
+
   chSysUnlockFromISR();
 }
 
@@ -100,7 +103,6 @@ static THD_FUNCTION(usb_rx, arg) {
         cur_pos = 0;
         len = 0;
         is_completed = true;
-       // memset(receiveBuf, 0, OUT_PACKETSIZE*2);
       }
     } else {
       if ((cur_pos + rec_size) >= len + 3) {
@@ -112,7 +114,6 @@ static THD_FUNCTION(usb_rx, arg) {
         cur_pos = 0;
         len = 0;
         is_completed = true;
-        //memset(receiveBuf, 0, OUT_PACKETSIZE*2);
       } else {
         memcpy(rx_packet.data + cur_pos, receiveBuf, rec_size);
         cur_pos += rec_size;
@@ -138,14 +139,15 @@ static THD_FUNCTION(combi, arg) {
       case 0x40: //BDM utility.
         ret = exec_cmd_bdm(&rx_packet, &tx_packet);
         break;
-      case 0x60: //SWCAN utility.
-        ret = exec_cmd_swcan(&rx_packet, &tx_packet);
+      case 0x60: //SocketCAN utility.
+        ret = exec_cmd_socketcan(&rx_packet, &tx_packet);
         break;
       case 0x80:  //CAN utility.
         ret = exec_cmd_can(&rx_packet, &tx_packet);
         break;
-      case 0xA0: // J2534 utility.volatile
+      case 0xA0:  //J2534 utility.
         ret = exec_cmd_j2534(&rx_packet, &tx_packet);
+        break;
         break;
       default:
         continue;
@@ -163,19 +165,20 @@ static THD_FUNCTION(combi, arg) {
 static THD_WORKING_AREA(can_rx_wa, 4096);
 static THD_FUNCTION(can_rx, p) {
   (void)p;
-  event_listener_t el;
+  //event_listener_t el;
   static CANRxFrame rxmsg = {};
   static uint8_t size = 0;
   static uint8_t buffer[80] = {0};
   static uint8_t canbuff[66] = {0};
   packet_t tx_packet = {.data = canbuff};
   chRegSetThreadName("can receiver");
-  chEvtRegister(&CAND1.rxfull_event, &el, 0);
+  //chEvtRegister(&CAND1.rxfull_event, &el, 0);
 
   while (true) {
-    if (chEvtWaitAnyTimeout(ALL_EVENTS, TIME_MS2I(100)) == 0) {
-      continue;
-    }
+    // TODO: check from LLD side, some frame are dropped
+   // if (chEvtWaitAnyTimeout(ALL_EVENTS, TIME_MS2I(100)) == 0) {
+     // continue;
+    //}
     while (canReceive(&CAND1, CAN_ANY_MAILBOX, &rxmsg, TIME_IMMEDIATE) == MSG_OK ) {
       if (hscan_rx_cb == NULL)
         continue;
@@ -188,7 +191,7 @@ static THD_FUNCTION(can_rx, p) {
       usb_send(&USBD1, EP_IN, buffer, size);
     }
   }
-  chEvtUnregister(&CAND1.rxfull_event, &el);
+ // chEvtUnregister(&CAND1.rxfull_event, &el);
 }
 
 static THD_WORKING_AREA(swcan_rx_wa, 4096);
@@ -199,7 +202,7 @@ static THD_FUNCTION(swcan_rx, p) {
   uint8_t size = 0;
   uint8_t buffer[IN_PACKETSIZE] = {0};
   uint8_t packetbuff[16] = {0};
-  packet_t tx_packet = {.data = packetbuff, .cmd_code = cmd_swcan_rxframe, .data_len = 15};
+  packet_t tx_packet = {.data = packetbuff};
   chRegSetThreadName("swcan receiver");
   chEvtRegister(&CAND2.rxfull_event, &el, 0);
 
@@ -208,20 +211,10 @@ static THD_FUNCTION(swcan_rx, p) {
       continue;
     }
     while (canReceive(&CAND2, CAN_ANY_MAILBOX, &rxmsg, TIME_IMMEDIATE) == MSG_OK ) {
-      if (rxmsg.common.XTD) {
-        packetbuff[0] = rxmsg.ext.EID & 0xFF;
-        packetbuff[1] = (rxmsg.ext.EID >> 8) & 0xFF;
-        packetbuff[2] = (rxmsg.ext.EID >> 16) & 0xFF;
-        packetbuff[3] = (rxmsg.ext.EID >> 24) & 0xFF;
-      } else {
-        packetbuff[0] = rxmsg.std.SID & 0xFF;
-        packetbuff[1] = (rxmsg.std.SID >> 8) & 0xFF;
-        packetbuff[2] = (rxmsg.std.SID >> 16) & 0xFF;
-      }
-      packetbuff[12] = rxmsg.DLC;
-      packetbuff[13] = rxmsg.common.XTD;
-      packetbuff[14] = rxmsg.common.RTR;
-      memcpy(packetbuff + 4, rxmsg.data8, rxmsg.DLC);
+      if (hscan_rx_cb == NULL)
+        continue;
+      if (!hscan_rx_cb(&rxmsg, &tx_packet))
+        continue;
       size = covertPacketToBuffer(&tx_packet, buffer);
       usb_send(&USBD1, EP_IN, buffer, size);
     }

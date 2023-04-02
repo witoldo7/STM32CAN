@@ -119,7 +119,7 @@ LDSCRIPT= $(STARTUPLD)/STM32H750xB.ld
 CSRC = $(ALLCSRC) \
        $(BOARDSRC) \
        $(BDMSRC) \
-       usbcombi.c utils.c combi.c j2534.c main.c
+       usbadapter.c utils.c combi.c j2534.c socketcan.c bdmutility.c main.c
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.

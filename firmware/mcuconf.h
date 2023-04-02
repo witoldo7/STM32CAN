@@ -89,10 +89,10 @@
 #define STM32_PLL1_Q_ENABLED                TRUE
 #define STM32_PLL1_R_ENABLED                TRUE
 #define STM32_PLL1_DIVM_VALUE               5
-#define STM32_PLL1_DIVN_VALUE               160
+#define STM32_PLL1_DIVN_VALUE               192
 #define STM32_PLL1_FRACN_VALUE              0
 #define STM32_PLL1_DIVP_VALUE               2
-#define STM32_PLL1_DIVQ_VALUE               10
+#define STM32_PLL1_DIVQ_VALUE               12
 #define STM32_PLL1_DIVR_VALUE               2
 #define STM32_PLL2_ENABLED                  TRUE
 #define STM32_PLL2_P_ENABLED                TRUE
@@ -185,8 +185,8 @@
 #define STM32_IRQ_EXTI19_PRIORITY           6
 #define STM32_IRQ_EXTI20_21_PRIORITY        6
 
-#define STM32_IRQ_FDCAN1_PRIORITY           10
-#define STM32_IRQ_FDCAN2_PRIORITY           10
+#define STM32_IRQ_FDCAN1_PRIORITY           12
+#define STM32_IRQ_FDCAN2_PRIORITY           3
 
 #define STM32_IRQ_MDMA_PRIORITY             9
 
@@ -479,7 +479,7 @@
 #define STM32_USB_OTG1_IRQ_PRIORITY         14
 #define STM32_USB_OTG2_IRQ_PRIORITY         14
 #define STM32_USB_OTG1_RX_FIFO_SIZE         512
-#define STM32_USB_OTG2_RX_FIFO_SIZE         1024
+#define STM32_USB_OTG2_RX_FIFO_SIZE         4096
 #define STM32_USB_HOST_WAKEUP_DURATION      2
 
 /*

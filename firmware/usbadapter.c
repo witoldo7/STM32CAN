@@ -6,8 +6,7 @@
  * 
  */ 
 
-#include "hal.h"
-#include "usbcombi.h"
+#include "usbadapter.h"
 
 #define CHUNK_INTERVAL_FS 0x00 /* 0x19 - 25ms for packet of 10 data reads (USB 2.0 FS) */
 #define INT_PACKETSIZE  0x10

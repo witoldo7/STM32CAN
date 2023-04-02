@@ -4,7 +4,7 @@
  * STM32CAN Firmware.
  * Copyright (c) 2022 Witold Olechowski.
  * 
- */ 
+ */
 
 #ifndef UTILS_H_
 #define UTILS_H_
@@ -56,8 +56,7 @@
 #define CAN_CTRLMODE_TDC_AUTO       0x200   /* CAN transiver automatically calculates TDCV */
 #define CAN_CTRLMODE_TDC_MANUAL     0x400   /* TDCV is manually set up by user */
 
-typedef struct
-{
+typedef struct {
   uint32_t IdType;
   uint32_t FilterIndex;
   uint32_t FilterType;
@@ -69,51 +68,58 @@ typedef struct
 } CAN_Filter;
 
 typedef struct {
-  uint32_t      StandardFilterSA;
-  uint32_t      ExtendedFilterSA;
-  uint32_t      RxFIFO0SA;
-  uint32_t      RxFIFO1SA;
-  uint32_t      RxBufferSA;
-  uint32_t      TxEventFIFOSA;
-  uint32_t      TxBufferSA;
-  uint32_t      TxFIFOQSA;
-  uint32_t      TTMemorySA;
-  uint32_t      EndAddress;
+  uint32_t StandardFilterSA;
+  uint32_t ExtendedFilterSA;
+  uint32_t RxFIFO0SA;
+  uint32_t RxFIFO1SA;
+  uint32_t RxBufferSA;
+  uint32_t TxEventFIFOSA;
+  uint32_t TxBufferSA;
+  uint32_t TxFIFOQSA;
+  uint32_t TTMemorySA;
+  uint32_t EndAddress;
 } CAN_RamAddress;
 
 typedef struct {
-  uint32_t      MessageRAMOffset;
-  uint32_t      StdFiltersNbr;
-  uint32_t      ExtFiltersNbr;
-  uint32_t      RxFifo0ElmtsNbr;
-  uint32_t      RxFifo0ElmtSize;
-  uint32_t      RxFifo1ElmtsNbr;
-  uint32_t      RxFifo1ElmtSize;
-  uint32_t      RxBuffersNbr;
-  uint32_t      RxBufferSize;
-  uint32_t      TxEventsNbr;
-  uint32_t      TxBuffersNbr;
-  uint32_t      TxFifoQueueElmtsNbr;
-  uint32_t      TxElmtSize;
+  uint32_t MessageRAMOffset;
+  uint32_t StdFiltersNbr;
+  uint32_t ExtFiltersNbr;
+  uint32_t RxFifo0ElmtsNbr;
+  uint32_t RxFifo0ElmtSize;
+  uint32_t RxFifo1ElmtsNbr;
+  uint32_t RxFifo1ElmtSize;
+  uint32_t RxBuffersNbr;
+  uint32_t RxBufferSize;
+  uint32_t TxEventsNbr;
+  uint32_t TxBuffersNbr;
+  uint32_t TxFifoQueueElmtsNbr;
+  uint32_t TxElmtSize;
 } CANRamConfig;
 
 typedef struct {
-  uint8_t cmd_code; // command code
-  uint16_t data_len;    // data block length
-  uint8_t *data;        // optional data block
-  uint8_t term;     // terminator
+  uint8_t cmd_code;  // command code
+  uint16_t data_len; // data block length
+  uint8_t *data;     // optional data block
+  uint8_t term;      // terminator
 } packet_t;
 
-void registerHsCanCallback(bool (CANRxFrame *rxmsg, packet_t *packet));
-void registerSwCanCallback(bool (CANRxFrame *rxmsg, packet_t *packet));
+enum term_command_t {
+  cmd_term_ack = 0x00,
+  cmd_term_nack = 0xFF
+};
+
+void registerHsCanCallback(bool(CANRxFrame *rxmsg, packet_t *packet));
+void registerSwCanCallback(bool(CANRxFrame *rxmsg, packet_t *packet));
 void swab(uint16_t *word);
 uint16_t getSupplyVoltage(void);
 void get_vbat(uint8_t *vbat);
 uint8_t can_fd_dlc2len(uint8_t dlc);
 bool canBaudRate(CANConfig *can_cfg, uint32_t can_baudrate);
 bool canMemorryConfig(CANDriver *canp, CANConfig *can_cfg, CANRamConfig *cfg, CAN_RamAddress *msgRam);
-void canGlobalFilter(CANConfig *can_cfg, uint32_t NonMatchingStd, uint32_t NonMatchingExt, uint32_t RejectRemoteStd, uint32_t RejectRemoteExt);
+void canGlobalFilter(CANConfig *can_cfg, uint32_t NonMatchingStd, uint32_t NonMatchingExt, uint32_t RejectRemoteStd,
+                     uint32_t RejectRemoteExt);
 void canFilter(CAN_RamAddress *msgRam, CAN_Filter *filter);
+uint8_t CvtEltSize(uint8_t e);
 bool prepareReplyPacket(packet_t *reply, packet_t *source, uint8_t *data, uint16_t data_len, uint8_t term);
 uint8_t covertPacketToBuffer(packet_t *packet, uint8_t *buffer);
 #endif /* UTILS_H_ */
