@@ -1,8 +1,8 @@
+// SPDX-License-Identifier: Apache-2.0
+
 /*
- * debug.h
- *
- *  Created on: 18 paź 2022
- *      Author: witold
+ * STM32CAN Firmware.
+ * Copyright (c) 2023 Witold Olechowski
  */
 
 #ifndef DEBUG_H_

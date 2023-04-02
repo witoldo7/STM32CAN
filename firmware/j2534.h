@@ -1,8 +1,8 @@
+// SPDX-License-Identifier: Apache-2.0
+
 /*
- * j2534.h
- *
- *  Created on: 20 lut 2023
- *      Author: witold
+ * STM32CAN Firmware.
+ * Copyright (c) 2023 Witold Olechowski
  */
 
 #ifndef J2534_H_

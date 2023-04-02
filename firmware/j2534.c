@@ -1,9 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0
+
 /*
- * j2534.c
- *
- *  Created on: 20 lut 2023
- *      Author: witold
+ * STM32CAN Firmware.
+ * Copyright (c) 2023 Witold Olechowski
  */
+
 #include <string.h>
 #include "hal.h"
 #include "j2534.h"
@@ -12,17 +13,17 @@ CAN_RamAddress hscan_ram, swcan_ram;
 
 CANRamConfig hscan_ram_cfg = {
   .MessageRAMOffset = 0,
-  .StdFiltersNbr = 8,
-  .ExtFiltersNbr = 0,
+  .StdFiltersNbr = 4,
+  .ExtFiltersNbr = 4,
   .RxFifo0ElmtsNbr = 32,
   .RxFifo0ElmtSize = FDCAN_DATA_BYTES_8,
-  .RxFifo1ElmtsNbr = 1,
+  .RxFifo1ElmtsNbr = 0,
   .RxFifo1ElmtSize = FDCAN_DATA_BYTES_8,
-  .RxBuffersNbr = 32,
+  .RxBuffersNbr = 16,
   .RxBufferSize = FDCAN_DATA_BYTES_8,
-  .TxEventsNbr = 8,
-  .TxBuffersNbr = 8,
-  .TxFifoQueueElmtsNbr = 8,
+  .TxEventsNbr = 0,
+  .TxBuffersNbr = 1,
+  .TxFifoQueueElmtsNbr = 1,
   .TxElmtSize = FDCAN_DATA_BYTES_8
 };
 
@@ -76,7 +77,7 @@ bool rx_swcan_msg(CANRxFrame *rxmsg, packet_t *packet) {
   packet->data_len = 10 + rxmsg->DLC;
   return true;
 }
-const uint32_t CvtEltSize1[] = {0, 0, 0, 0, 0, 1, 2, 3, 4, 0, 5, 0, 0, 0, 6, 0, 0, 0, 7};
+
 uint32_t handle_hscan_connect(uint32_t flags, uint32_t baudrate) {
   (void)flags; //TODO
   registerHsCanCallback(&rx_can_msg);
@@ -84,9 +85,9 @@ uint32_t handle_hscan_connect(uint32_t flags, uint32_t baudrate) {
     return ERR_INVALID_BAUDRATE;
   }
   canMemorryConfig(&CAND1, &hsCanConfig, &hscan_ram_cfg, &hscan_ram);
-  hsCanConfig.TXESC = CvtEltSize1[hscan_ram_cfg.TxElmtSize]; // 8 Byte mode only (4 words per message)
-  hsCanConfig.RXESC = CvtEltSize1[hscan_ram_cfg.RxFifo0ElmtSize] << FDCAN_RXESC_F0DS_Pos | CvtEltSize1[hscan_ram_cfg.RxFifo1ElmtSize] << FDCAN_RXESC_F1DS_Pos
-         | CvtEltSize1[hscan_ram_cfg.RxBufferSize] << FDCAN_RXESC_RBDS_Pos;// 8 Byte mode only (4 words per message)
+  hsCanConfig.TXESC = CvtEltSize(hscan_ram_cfg.TxElmtSize); // 8 Byte mode only (4 words per message)
+  hsCanConfig.RXESC = CvtEltSize(hscan_ram_cfg.RxFifo0ElmtSize) << FDCAN_RXESC_F0DS_Pos | CvtEltSize(hscan_ram_cfg.RxFifo1ElmtSize) << FDCAN_RXESC_F1DS_Pos
+         | CvtEltSize(hscan_ram_cfg.RxBufferSize) << FDCAN_RXESC_RBDS_Pos;// 8 Byte mode only (4 words per message)
   canGlobalFilter(&hsCanConfig, FDCAN_REJECT, FDCAN_REJECT, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
   canStart(&CAND1, &hsCanConfig);
   return STATUS_NOERROR;

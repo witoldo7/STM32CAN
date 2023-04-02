@@ -5,7 +5,7 @@
 
 # Compiler options here. -Og -ggdb 
 ifeq ($(USE_OPT),)
-  USE_OPT = -Og -ggdb -fomit-frame-pointer -falign-functions=16
+  USE_OPT = -Os -fomit-frame-pointer -falign-functions=16
 endif
 
 # C specific options here (added to USE_OPT).
@@ -119,7 +119,7 @@ LDSCRIPT= $(STARTUPLD)/STM32H750xB.ld
 CSRC = $(ALLCSRC) \
        $(BOARDSRC) \
        $(BDMSRC) \
-       usbcombi.c utils.c combi.c j2534.c main.c
+       usbadapter.c utils.c combi.c j2534.c socketcan.c bdmutility.c main.c
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.

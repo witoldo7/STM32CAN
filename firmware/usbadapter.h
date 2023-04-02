@@ -6,11 +6,13 @@
  * 
  */ 
 
-#ifndef USBCOMBI_H
-#define USBCOMBI_H
+#ifndef USBADAPTER_H
+#define USBADAPTER_H
 
-#define IN_PACKETSIZE  0x80
-#define OUT_PACKETSIZE 0x80
+#include "hal.h"
+
+#define IN_PACKETSIZE  0x40
+#define OUT_PACKETSIZE 0x40
 #define EP_IN 2
 #define EP_OUT 2
 extern uint8_t receiveBuf[OUT_PACKETSIZE*2];
@@ -23,4 +25,5 @@ extern void dataReceived(USBDriver *usbp, usbep_t ep);
 extern void usb_send(USBDriver *usbp, usbep_t ep, const uint8_t *buf, size_t n);
 extern bool start_receive(USBDriver *usbp, usbep_t ep, uint8_t *buf, size_t n);
 extern bool combiConfigureHookI(USBDriver *usbp);
+
 #endif
