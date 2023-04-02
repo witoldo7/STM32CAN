@@ -2,8 +2,7 @@
 
 /* 
  * STM32CAN Firmware.
- * Copyright (c) 2022 Witold Olechowski.
- * 
+ * Copyright (c) 2022 Witold Olechowski
  */ 
 
 #include <stdio.h>
@@ -22,11 +21,13 @@
 BaseSequentialStream *GlobalDebugChannel;
 static semaphore_t rxSem;
 static semaphore_t processSem;
+
 uint8_t receiveBuf[OUT_PACKETSIZE*2];
 uint8_t transferBuf[IN_PACKETSIZE*2];
-uint8_t rxdata[600], txdata[300];
-packet_t rx_packet = {.data = rxdata};
-packet_t tx_packet = {.data = txdata};
+
+static uint8_t rxdata[300], txdata[300];
+static packet_t rx_packet = {.data = rxdata};
+static packet_t tx_packet = {.data = txdata};
 
 bool (*hscan_rx_cb)(CANRxFrame*, packet_t*);
 bool (*swcan_rx_cb)(CANRxFrame*, packet_t*);
@@ -38,6 +39,7 @@ void registerHsCanCallback(bool (*cb)(CANRxFrame *rxmsg, packet_t *packet)) {
 void registerSwCanCallback(bool (*cb)(CANRxFrame *rxmsg, packet_t *packet)) {
   swcan_rx_cb = cb;
 }
+
 /*
  * data Received Callback
  */
@@ -72,8 +74,8 @@ static THD_FUNCTION(usb_rx, arg) {
   uint16_t len = 0;
   while (TRUE) {
     chSemWait(&rxSem);
-    if (!(((USBDriver*)&USBD1)->state == USB_ACTIVE)) {
-      continue;
+    while (!(((USBDriver*)&USBD1)->state == USB_ACTIVE)) {
+      __asm("nop");
     }
     if (*(receiveBuf) == 0) {
       continue;
@@ -98,7 +100,7 @@ static THD_FUNCTION(usb_rx, arg) {
         cur_pos = 0;
         len = 0;
         is_completed = true;
-        memset(receiveBuf, 0, OUT_PACKETSIZE*2);
+       // memset(receiveBuf, 0, OUT_PACKETSIZE*2);
       }
     } else {
       if ((cur_pos + rec_size) >= len + 3) {
@@ -110,7 +112,7 @@ static THD_FUNCTION(usb_rx, arg) {
         cur_pos = 0;
         len = 0;
         is_completed = true;
-        memset(receiveBuf, 0, OUT_PACKETSIZE*2);
+        //memset(receiveBuf, 0, OUT_PACKETSIZE*2);
       } else {
         memcpy(rx_packet.data + cur_pos, receiveBuf, rec_size);
         cur_pos += rec_size;
@@ -142,7 +144,7 @@ static THD_FUNCTION(combi, arg) {
       case 0x80:  //CAN utility.
         ret = exec_cmd_can(&rx_packet, &tx_packet);
         break;
-      case 0xA0: // J2534 utility.
+      case 0xA0: // J2534 utility.volatile
         ret = exec_cmd_j2534(&rx_packet, &tx_packet);
         break;
       default:
@@ -162,10 +164,10 @@ static THD_WORKING_AREA(can_rx_wa, 4096);
 static THD_FUNCTION(can_rx, p) {
   (void)p;
   event_listener_t el;
-  CANRxFrame rxmsg = {};
-  uint8_t size = 0;
-  uint8_t buffer[IN_PACKETSIZE * 2] = {0};
-  uint8_t canbuff[IN_PACKETSIZE * 2] = {0};
+  static CANRxFrame rxmsg = {};
+  static uint8_t size = 0;
+  static uint8_t buffer[80] = {0};
+  static uint8_t canbuff[66] = {0};
   packet_t tx_packet = {.data = canbuff};
   chRegSetThreadName("can receiver");
   chEvtRegister(&CAND1.rxfull_event, &el, 0);
@@ -180,8 +182,8 @@ static THD_FUNCTION(can_rx, p) {
       if (!hscan_rx_cb(&rxmsg, &tx_packet))
         continue;
       size = covertPacketToBuffer(&tx_packet, buffer);
-      if (!(((USBDriver*)&USBD1)->state == USB_ACTIVE)) {
-            continue;
+      while(!(((USBDriver*)&USBD1)->state == USB_ACTIVE)) {
+        __asm("nop");
       }
       usb_send(&USBD1, EP_IN, buffer, size);
     }
@@ -226,6 +228,7 @@ static THD_FUNCTION(swcan_rx, p) {
   }
   chEvtUnregister(&CAND2.rxfull_event, &el);
 }
+
 #define SHELL_WA_SIZE   THD_WORKING_AREA_SIZE(2048)
 
 static const ShellCommand commands[] = {
@@ -289,10 +292,10 @@ int main(void) {
    */
   shellInit();
 
-  chThdCreateStatic(usb_rx_wa, sizeof(usb_rx_wa), NORMALPRIO + 7, usb_rx, NULL);
+  chThdCreateStatic(usb_rx_wa, sizeof(usb_rx_wa), NORMALPRIO + 20, usb_rx, NULL);
   chThdCreateStatic(combi_wa, sizeof(combi_wa), NORMALPRIO + 7, combi, NULL);
-  chThdCreateStatic(can_rx_wa, sizeof(can_rx_wa), NORMALPRIO + 20, can_rx, NULL);
-  chThdCreateStatic(swcan_rx_wa, sizeof(swcan_rx_wa), NORMALPRIO + 7, swcan_rx, NULL);
+  chThdCreateStatic(can_rx_wa, sizeof(can_rx_wa), NORMALPRIO + 2, can_rx, NULL);
+  chThdCreateStatic(swcan_rx_wa, sizeof(swcan_rx_wa), NORMALPRIO + 2, swcan_rx, NULL);
 
   /*
    * Normal main() thread activity, handling SD card events and shell

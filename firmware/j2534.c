@@ -12,17 +12,17 @@ CAN_RamAddress hscan_ram, swcan_ram;
 
 CANRamConfig hscan_ram_cfg = {
   .MessageRAMOffset = 0,
-  .StdFiltersNbr = 8,
-  .ExtFiltersNbr = 0,
+  .StdFiltersNbr = 4,
+  .ExtFiltersNbr = 4,
   .RxFifo0ElmtsNbr = 32,
   .RxFifo0ElmtSize = FDCAN_DATA_BYTES_8,
-  .RxFifo1ElmtsNbr = 1,
+  .RxFifo1ElmtsNbr = 0,
   .RxFifo1ElmtSize = FDCAN_DATA_BYTES_8,
-  .RxBuffersNbr = 32,
+  .RxBuffersNbr = 16,
   .RxBufferSize = FDCAN_DATA_BYTES_8,
-  .TxEventsNbr = 8,
-  .TxBuffersNbr = 8,
-  .TxFifoQueueElmtsNbr = 8,
+  .TxEventsNbr = 0,
+  .TxBuffersNbr = 1,
+  .TxFifoQueueElmtsNbr = 1,
   .TxElmtSize = FDCAN_DATA_BYTES_8
 };
 
@@ -76,6 +76,7 @@ bool rx_swcan_msg(CANRxFrame *rxmsg, packet_t *packet) {
   packet->data_len = 10 + rxmsg->DLC;
   return true;
 }
+
 const uint32_t CvtEltSize1[] = {0, 0, 0, 0, 0, 1, 2, 3, 4, 0, 5, 0, 0, 0, 6, 0, 0, 0, 7};
 uint32_t handle_hscan_connect(uint32_t flags, uint32_t baudrate) {
   (void)flags; //TODO

@@ -104,13 +104,6 @@ typedef struct {
   uint8_t term;     // terminator
 } packet_t;
 
-typedef struct {
-  uint8_t cmd_code; // command code
-  uint16_t data_len;    // data block length
-  uint8_t data[72];        // optional data block
-  uint8_t term;     // terminator
-} f_packet_t;
-
 void registerHsCanCallback(bool (CANRxFrame *rxmsg, packet_t *packet));
 void registerSwCanCallback(bool (CANRxFrame *rxmsg, packet_t *packet));
 void swab(uint16_t *word);

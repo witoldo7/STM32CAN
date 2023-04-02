@@ -349,7 +349,7 @@ void dataTransmitted(USBDriver *usbp, usbep_t ep) {
 
 void usb_send(USBDriver *usbp, usbep_t ep, const uint8_t *buf, size_t n) {
   while (is_transmiting) {
-    chThdSleepMicroseconds(1);
+    __asm("nop");
   }
   osalSysLock();
   is_transmiting = true;

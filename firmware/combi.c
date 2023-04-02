@@ -55,17 +55,33 @@ CAN_Filter filter2 = {
 CANRamConfig can1_ram_cfg = {
   .MessageRAMOffset = 0,
   .StdFiltersNbr = 4,
+  .ExtFiltersNbr = 4,
+  .RxFifo0ElmtsNbr = 32,
+  .RxFifo0ElmtSize = FDCAN_DATA_BYTES_8,
+  .RxFifo1ElmtsNbr = 0,
+  .RxFifo1ElmtSize = FDCAN_DATA_BYTES_8,
+  .RxBuffersNbr = 16,
+  .RxBufferSize = FDCAN_DATA_BYTES_8,
+  .TxEventsNbr = 0,
+  .TxBuffersNbr = 1,
+  .TxFifoQueueElmtsNbr = 1,
+  .TxElmtSize = FDCAN_DATA_BYTES_8
+};
+
+CANRamConfig hscan_ram_cfg1 = {
+  .MessageRAMOffset = 0,
+  .StdFiltersNbr = 8,
   .ExtFiltersNbr = 0,
-  .RxFifo0ElmtsNbr = 4,
-  .RxFifo0ElmtSize = FDCAN_DATA_BYTES_64,
-  .RxFifo1ElmtsNbr = 4,
-  .RxFifo1ElmtSize = FDCAN_DATA_BYTES_64,
-  .RxBuffersNbr = 4,
-  .RxBufferSize = FDCAN_DATA_BYTES_64,
-  .TxEventsNbr = 1,
-  .TxBuffersNbr = 4,
-  .TxFifoQueueElmtsNbr = 4,
-  .TxElmtSize = FDCAN_DATA_BYTES_64
+  .RxFifo0ElmtsNbr = 8,
+  .RxFifo0ElmtSize = FDCAN_DATA_BYTES_8,
+  .RxFifo1ElmtsNbr = 8,
+  .RxFifo1ElmtSize = FDCAN_DATA_BYTES_8,
+  .RxBuffersNbr = 8,
+  .RxBufferSize = FDCAN_DATA_BYTES_8,
+  .TxEventsNbr = 2,
+  .TxBuffersNbr = 8,
+  .TxFifoQueueElmtsNbr = 8,
+  .TxElmtSize = FDCAN_DATA_BYTES_8
 };
 
 CANRamConfig can2_ram_cfg = {
@@ -163,8 +179,8 @@ bool exec_cmd_swcan(packet_t *rx_packet, packet_t *tx_packet) {
       uint32_t mode = rx_packet->data[4] | (uint32_t)rx_packet->data[1] << 24 | (uint32_t)rx_packet->data[2] << 16
           | (uint32_t)rx_packet->data[3] << 8;
       canMemorryConfig(&CAND2, &canConfig2, &can2_ram_cfg, &can2_ram);
-      canConfig2.TXESC = CvtEltSize[can1_ram_cfg.TxElmtSize]; // 8 Byte mode only (4 words per message)
-      canConfig2.RXESC = CvtEltSize[can1_ram_cfg.RxFifo0ElmtSize] << FDCAN_RXESC_F0DS_Pos | CvtEltSize[can2_ram_cfg.RxFifo1ElmtSize] << FDCAN_RXESC_F1DS_Pos
+      canConfig2.TXESC = CvtEltSize[can2_ram_cfg.TxElmtSize]; // 8 Byte mode only (4 words per message)
+      canConfig2.RXESC = CvtEltSize[can2_ram_cfg.RxFifo0ElmtSize] << FDCAN_RXESC_F0DS_Pos | CvtEltSize[can2_ram_cfg.RxFifo1ElmtSize] << FDCAN_RXESC_F1DS_Pos
              | CvtEltSize[can2_ram_cfg.RxBufferSize] << FDCAN_RXESC_RBDS_Pos;// 8 Byte mode only (4 words per message)
 
       /* Loopback Mode */
@@ -255,9 +271,12 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
       break;
     case combi_open:
       registerHsCanCallback(&combi_rx_can_cb);
-      canBaudRate(&canConfig1, 500000);
       canMemorryConfig(&CAND1, &canConfig1, &can1_ram_cfg, &can1_ram);
+      canConfig2.TXESC = CvtEltSize[can1_ram_cfg.TxElmtSize]; // 8 Byte mode only (4 words per message)
+      canConfig2.RXESC = CvtEltSize[can1_ram_cfg.RxFifo0ElmtSize] << FDCAN_RXESC_F0DS_Pos | CvtEltSize[can2_ram_cfg.RxFifo1ElmtSize] << FDCAN_RXESC_F1DS_Pos
+             | CvtEltSize[can2_ram_cfg.RxBufferSize] << FDCAN_RXESC_RBDS_Pos;// 8 Byte mode only (4 words per message)
       canGlobalFilter(&canConfig1, FDCAN_REJECT, FDCAN_REJECT, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
+      canConfig1.CCCR |= FDCAN_CCCR_DAR;
       canStart(&CAND1, &canConfig1);
       //Combilib + Trionic 8 filters
       canFilter(&can1_ram, &filter0);
@@ -267,9 +286,9 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
     case fdcan_open:
       registerHsCanCallback(&socketcan_rx_can_cb);
       canConfig1.TEST = 0;
-      canConfig1.TXESC = CvtEltSize[can1_ram_cfg.TxElmtSize]; // 8 Byte mode only (4 words per message)
-      canConfig1.RXESC = CvtEltSize[can1_ram_cfg.RxFifo0ElmtSize] << FDCAN_RXESC_F0DS_Pos | CvtEltSize[can1_ram_cfg.RxFifo1ElmtSize] << FDCAN_RXESC_F1DS_Pos
-             | CvtEltSize[can1_ram_cfg.RxBufferSize] << FDCAN_RXESC_RBDS_Pos;// 8 Byte mode only (4 words per message)
+      canConfig1.TXESC = CvtEltSize[hscan_ram_cfg1.TxElmtSize]; // 8 Byte mode only (4 words per message)
+      canConfig1.RXESC = CvtEltSize[hscan_ram_cfg1.RxFifo0ElmtSize] << FDCAN_RXESC_F0DS_Pos | CvtEltSize[hscan_ram_cfg1.RxFifo1ElmtSize] << FDCAN_RXESC_F1DS_Pos
+             | CvtEltSize[hscan_ram_cfg1.RxBufferSize] << FDCAN_RXESC_RBDS_Pos;// 8 Byte mode only (4 words per message)
       uint32_t mode = rx_packet->data[4] | (uint32_t)rx_packet->data[1] << 24 | (uint32_t)rx_packet->data[2] << 16
           | (uint32_t)rx_packet->data[3] << 8;
       /* NISO support */
@@ -297,7 +316,7 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
       if (mode & CAN_CTRLMODE_ONE_SHOT) {
         canConfig1.CCCR |= FDCAN_CCCR_DAR;
       }
-      canMemorryConfig(&CAND1, &canConfig1, &can1_ram_cfg, &can1_ram);
+      canMemorryConfig(&CAND1, &canConfig1, &hscan_ram_cfg1, &can1_ram);
       canGlobalFilter(&canConfig1, FDCAN_REJECT, FDCAN_REJECT, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
       canStart(&CAND1, &canConfig1);
       break;
@@ -352,7 +371,7 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
     txmsg.common.RTR = rx_packet->data[14];
     memcpy(txmsg.data8, rx_packet->data + 4, can_fd_dlc2len(rx_packet->data[12]));
 
-    return (canTransmit(&CAND1, CAN_ANY_MAILBOX, &txmsg, TIME_MS2I(100)) == MSG_OK )
+    return (canTransmit(&CAND1, CAN_ANY_MAILBOX, &txmsg, TIME_MS2I(200)) == MSG_OK)
         && prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
 
   /* data[0:3] - SID or EID
