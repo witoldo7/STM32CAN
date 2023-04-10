@@ -345,26 +345,22 @@
 //
 // J2534-1 v04.04 Structure Definitions
 //
-typedef struct
-{
+typedef struct {
 	uint32_t	Parameter;	// Name of parameter
 	uint32_t	Value;		// Value of the parameter
 } SCONFIG;
 
-typedef struct
-{
+typedef struct {
 	uint32_t	NumOfParams;	// Number of SCONFIG elements
-	SCONFIG*		ConfigPtr;		// Array of SCONFIG
+	SCONFIG*	ConfigPtr;		// Array of SCONFIG
 } SCONFIG_LIST;
 
-typedef struct
-{
+typedef struct {
 	uint32_t	NumOfBytes;		// Number of bytes in the array
 	uint8_t*	BytePtr;		// Array of bytes
 } SBYTE_ARRAY;
 
-typedef struct
-{
+typedef struct {
 	uint32_t	ProtocolID;
 	uint32_t	RxStatus;
 	uint32_t	TxFlags;
