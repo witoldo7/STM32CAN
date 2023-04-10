@@ -28,18 +28,19 @@ CANRamConfig hscan_ram_cfg = {
 };
 
 CANRamConfig swcan_ram_cfg = {
-  .MessageRAMOffset = 384,
-  .StdFiltersNbr = 4,
-  .ExtFiltersNbr = 0,
-  .RxFifo0ElmtsNbr = 4,
+   //fixme
+  .MessageRAMOffset = 0,
+  .StdFiltersNbr = FILTER_NBR,
+  .ExtFiltersNbr = FILTER_NBR,
+  .RxFifo0ElmtsNbr = 2,
   .RxFifo0ElmtSize = FDCAN_DATA_BYTES_8,
-  .RxFifo1ElmtsNbr = 4,
+  .RxFifo1ElmtsNbr = 2,
   .RxFifo1ElmtSize = FDCAN_DATA_BYTES_8,
-  .RxBuffersNbr = 4,
+  .RxBuffersNbr = 2,
   .RxBufferSize = FDCAN_DATA_BYTES_8,
   .TxEventsNbr = 1,
-  .TxBuffersNbr = 4,
-  .TxFifoQueueElmtsNbr = 4,
+  .TxBuffersNbr = 1,
+  .TxFifoQueueElmtsNbr = 1,
   .TxElmtSize = FDCAN_DATA_BYTES_8
 };
 
@@ -219,6 +220,7 @@ uint32_t clear_can_filters(j2534_conn* conn) {
     cf->filter[i].FilterIndex = i;
     canFilter(cf->msgRam, &cf->filter[i]);
   }
+  cf->index = 0;
   return STATUS_NOERROR;
 }
 
@@ -232,11 +234,12 @@ uint32_t clear_can_filter(j2534_conn* conn, uint8_t idx) {
 
 bool j2534_start_filter(packet_t *rx_packet, packet_t *tx_packet) {
   uint32_t channelID, error = ERR_NOT_SUPPORTED;
-  uint8_t size = 4;
+  uint8_t size = 5;
   memcpy(&channelID, rx_packet->data, 4);
   j2534_conn* conn = get_connection(channelID);
   error = handle_can_filter(conn, rx_packet->data);
   memcpy(retBuff, &error, 4);
+  memcpy(retBuff+4, &conn->canFilter->index, 1);
   return prepareReplyPacket(tx_packet, rx_packet, retBuff, size, cmd_term_ack);
 }
 
@@ -317,13 +320,13 @@ uint32_t handldle_set_config(j2534_conn* conn, SCONFIG_LIST* cfgList) {
       conn->loopback = cfg->Value == 1;
       if (conn->loopback) {
         canStop(conn->canp);
-        hsCanConfig.CCCR |= FDCAN_CCCR_TEST | FDCAN_CCCR_MON;
-        hsCanConfig.TEST |= FDCAN_TEST_LBCK;
+        conn->canCfg->CCCR |= FDCAN_CCCR_TEST | FDCAN_CCCR_MON;
+        conn->canCfg->TEST |= FDCAN_TEST_LBCK;
         canStart(conn->canp, conn->canCfg);
       } else {
         canStop(conn->canp);
-        hsCanConfig.CCCR &= ~FDCAN_CCCR_TEST | ~FDCAN_CCCR_MON;
-        hsCanConfig.TEST &= ~FDCAN_TEST_LBCK;
+        conn->canCfg->CCCR &= ~FDCAN_CCCR_TEST | ~FDCAN_CCCR_MON;
+        conn->canCfg->TEST &= ~FDCAN_TEST_LBCK;
         canStart(conn->canp, conn->canCfg);
       }
       err = STATUS_NOERROR;
@@ -346,6 +349,26 @@ uint32_t handldle_set_config(j2534_conn* conn, SCONFIG_LIST* cfgList) {
       break;
     case SW_CAN_RES_SWITCH:
       conn->swCanResSwitch = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case ISO15765_STMIN:
+      conn->iso15766stmin = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case ISO15765_BS:
+      conn->iso15766bs = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case ISO15765_STMIN_TX:
+      conn->iso15766stminTx = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case ISO15765_BS_TX:
+      conn->iso15766bsTx = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case ISO15765_WFT_MAX:
+      conn->iso15766wtfMax = cfg->Value;
       err = STATUS_NOERROR;
       break;
     default:
@@ -389,7 +412,7 @@ bool j2534_ioctl(packet_t *rx_packet, packet_t *tx_packet) {
     err = STATUS_NOERROR;
     break;
   case CLEAR_MSG_FILTERS:
-      clear_can_filters(conn);
+    err = clear_can_filters(conn);
     break;
   case FIVE_BAUD_INIT:
   case FAST_INIT:

@@ -17,7 +17,7 @@ else()
     install(FILES "${CMAKE_SOURCE_DIR}/misc/wqcan.json" DESTINATION ${INSTDIR})
 endif()
 
-add_library(j2534drv SHARED "j2534drv.c" "log.c" "utils.c")
+add_library(j2534drv SHARED "j2534drv.c" "j2534translate.c" "log.c" "utils.c")
 target_link_libraries(j2534drv ${LIBUSB_LIBRARY})
 target_compile_options(j2534drv PUBLIC -DLOG_USE_COLOR )
 install(TARGETS j2534drv DESTINATION  ${INSTDIR})

@@ -14,6 +14,7 @@
 #include <signal.h>
 #include "log.h"
 #include "utils.h"
+#include "j2534translate.h"
 
 #define DEVICE_ID           12345
 #define WQCAN_VENDOR_ID	    0xFFFF                      /* USB vendor ID used by the device */
@@ -146,6 +147,7 @@ static void LIBUSB_CALL cb_process(struct libusb_transfer *transfer, struct libu
 		enQueue(pMsg);
 		break;
 	default:
+		log_error("unsupported cmd: 0x%x", transfer->buffer[0]);
 		break;
 	}
 
@@ -299,8 +301,8 @@ uint32_t PTAPI PassThruClose(uint32_t DeviceID) {
  */
 uint32_t PTAPI PassThruConnect(uint32_t DeviceID, uint32_t protocolID,
 						   uint32_t flags, uint32_t baud, uint32_t *pChannelID) {
-	log_trace("PassThruConnect: DeviceID: %lu, protocolID: %lu, flags: %08lX, baud: %lu",
-			  DeviceID, protocolID, flags, baud);
+	log_trace("PassThruConnect: DeviceID: %lu, protocolID: %s, flags: %08lX, baud: %lu",
+			  DeviceID, translateProtocol(protocolID), flags, baud);
 	if (!isOpen)
 		return ERR_INVALID_DEVICE_ID;
 
@@ -325,7 +327,7 @@ uint32_t PTAPI PassThruConnect(uint32_t DeviceID, uint32_t protocolID,
 	memcpy(&channelID, resp_packet.data +  sizeof(err), sizeof(channelID));
 
 	*pChannelID = channelID;
-	log_trace("PassThruConnect: cid: %lu, err:%x", *pChannelID, err);
+	log_trace("PassThruConnect: cid: %lu, err: %s", *pChannelID, translateError(err));
 	return err;
 }
 
@@ -353,7 +355,7 @@ uint32_t PTAPI PassThruDisconnect(uint32_t ChannelID) {
 
 	memcpy(&err, resp_packet.data, sizeof(err));
 
-	log_trace("PassThruDisconnect, err: %lu", err);
+	log_trace("PassThruDisconnect: err: %s", translateError(err));
 	return err;
 }
 
@@ -429,17 +431,16 @@ uint32_t PTAPI PassThruReadMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t
 
 	err = coppyMessages(pMsg, msgCnt);
 	*pNumMsgs = msgCnt;
-	log_trace("PassThruReadMsgs err: %lu", err);
+	log_trace("PassThruReadMsgs err: %s", translateError(err));
 	Unlock(rxSem, rx_counter);
-	return STATUS_NOERROR;
+	return err;
 }
 
 /*
  * Write message(s) to a protocol channel.
  */
-uint32_t PTAPI PassThruWriteMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t *pNumMsgs, uint32_t timeInterval) {
-
-	log_trace("PassThruWriteMsgs: ChannelID: %lu, NumMsg: %lu, Interval: %lu msec\r\n MSG: %s", ChannelID, *pNumMsgs, timeInterval, parsemsg(pMsg));
+uint32_t PTAPI PassThruWriteMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t *pNumMsgs, uint32_t Timeout) {
+	log_trace("PassThruWriteMsgs: ChannelID: %lu, NumMsg: %lu, Timeout: %lu msec\r\n MSG: %s", ChannelID, *pNumMsgs, Timeout, parsemsg(pMsg));
 	if (!isOpen)
 		return ERR_INVALID_DEVICE_ID;
 
@@ -452,7 +453,7 @@ uint32_t PTAPI PassThruWriteMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_
 	uint8_t offset = 0;
 	memcpy(buff, &ChannelID, sizeof(ChannelID));
 	offset += 4;
-	memcpy(buff + offset, &timeInterval, sizeof(timeInterval));
+	memcpy(buff + offset, &Timeout, sizeof(Timeout));
 	offset += 4;
 
 	for (uint8_t i = 0; i < *pNumMsgs; i++) {
@@ -482,9 +483,8 @@ uint32_t PTAPI PassThruWriteMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_
 		memcpy(&err, tx_packet.data, sizeof(err));
 	}
 
-	log_trace("PassThruWriteMsgs err: %lu", err);
-
-	return STATUS_NOERROR;
+	log_trace("PassThruWriteMsgs err: %s", translateError(err));
+	return err;
 }
 
 /*
@@ -516,8 +516,8 @@ uint32_t PTAPI PassThruStopPeriodicMsg(uint32_t ChannelID, uint32_t msgID) {
  */
 uint32_t PTAPI PassThruStartMsgFilter(uint32_t ChannelID, uint32_t FilterType, PASSTHRU_MSG *pMaskMsg,
 								  PASSTHRU_MSG *pPatternMsg, PASSTHRU_MSG *pFlowControlMsg, uint32_t *pFilterID) {
-	log_trace("PassThruStartMsgFilter: ChannelID: %lu, FilterType: %lu, \n pMaskMsg: %s \n pPatternMsg: %s \n pFlowControlMsg: %s",
-			  ChannelID, FilterType, parsemsg(pMaskMsg), parsemsg(pPatternMsg), parsemsg(pFlowControlMsg));
+	log_trace("PassThruStartMsgFilter: ChannelID: %lu, FilterType: %s, \n pMaskMsg: %s \n pPatternMsg: %s \n pFlowControlMsg: %s",
+			  ChannelID, translateFilterType(FilterType), parsemsg(pMaskMsg), parsemsg(pPatternMsg), parsemsg(pFlowControlMsg));
 	if (!isOpen)
 		return ERR_INVALID_DEVICE_ID;
 
@@ -568,7 +568,7 @@ uint32_t PTAPI PassThruStartMsgFilter(uint32_t ChannelID, uint32_t FilterType, P
 	memcpy(&err, resp_packet.data, sizeof(err));
 	*pFilterID = resp_packet.data[4];
 
-	log_trace("PassThruStartMsgFilter err: %lu, filterID: %lu", err, *pFilterID);
+	log_trace("PassThruStartMsgFilter err: %s, filterID: %lu", translateError(err), *pFilterID);
 	return err;
 }
 
@@ -596,7 +596,7 @@ uint32_t PTAPI PassThruStopMsgFilter(uint32_t ChannelID, uint32_t FilterID) {
 
 	memcpy(&err, resp_packet.data, sizeof(err));
 
-	last_error("PassThruStopMsgFilter err: %x", err);
+	last_error("PassThruStopMsgFilter err: %s", translateError(err));
 	return err;
 }
 
@@ -681,7 +681,7 @@ uint32_t PTAPI PassThruGetLastError(char *pErrorDescription) {
  * baud rates, programming voltages, etc.).
  */
 uint32_t PTAPI PassThruIoctl(uint32_t ChannelID, uint32_t ioctlID, void *pInput, void *pOutput) {
-	log_trace("PassThruIoctl ChannelID: %lu, ioctlID: 0x%2X", ChannelID, ioctlID);
+	log_trace("PassThruIoctl ChannelID: %lu, ioctlID: %s", ChannelID, translateIoctl(ioctlID));
 	if (!isOpen)
 		return ERR_INVALID_DEVICE_ID;
 
@@ -716,7 +716,7 @@ uint32_t PTAPI PassThruIoctl(uint32_t ChannelID, uint32_t ioctlID, void *pInput,
 			if (err != STATUS_NOERROR) {
 				for (uint8_t i = 0; i < inputlist->NumOfParams; i++) {
 					SCONFIG* cfg = &inputlist->ConfigPtr[i];
-					log_trace("GET_CONFIG: num: %d, parameter: %x", i, cfg->Parameter);
+					log_trace("GET_CONFIG: num: %d, parameter: %s", i, translateParam(cfg->Parameter));
 				}
 				log_trace("Received only error: %x", err);
 				return err;
@@ -727,14 +727,14 @@ uint32_t PTAPI PassThruIoctl(uint32_t ChannelID, uint32_t ioctlID, void *pInput,
 
 			for (uint8_t i = 0; i < inputlist->NumOfParams; i++) {
 				SCONFIG* cfg = &inputlist->ConfigPtr[i];
-				log_trace("GET_CONFIG: num: %d, parameter: %x value %x", i, cfg->Parameter, cfg->Value);
+				log_trace("GET_CONFIG: num: %d, parameter: %s value %x", i, translateParam(cfg->Parameter), cfg->Value);
 			}
 			break;
 		case SET_CONFIG:
 			const SCONFIG_LIST* list = pInput;
 			for (uint8_t i = 0; i < list->NumOfParams; i++) {
 				SCONFIG *cfg = &list->ConfigPtr[i];
-				log_trace("SET_CONFIG: num: %d, parameter: %x value %x", i, cfg->Parameter, cfg->Value);
+				log_trace("SET_CONFIG: num: %d, parameter: %s value %x", i, translateParam(cfg->Parameter), cfg->Value);
 			}
 			memcpy(buff + offset, &list->NumOfParams, sizeof(list->NumOfParams));
 			offset += sizeof(list->NumOfParams);
@@ -769,16 +769,13 @@ uint32_t PTAPI PassThruIoctl(uint32_t ChannelID, uint32_t ioctlID, void *pInput,
 			*(uint32_t*)pOutput = voltage;
 			break;
 		case CLEAR_TX_BUFFER:
-			log_trace("Clear TX queue");
 			err = STATUS_NOERROR;
 			break;
 		case CLEAR_RX_BUFFER:
-			log_trace("Clear RX queue");
 			clearQueue();
 			err = STATUS_NOERROR;
 			break;
 		case CLEAR_MSG_FILTERS:
-			log_trace("Clear Msg filters");
 			txPacket.data_len = 8;
 			if (usb_send_packet(txPacket, WQCAN_TIMEOUT)) {
 				last_error("PassThruIoctl: Tx USB failed");
@@ -797,11 +794,11 @@ uint32_t PTAPI PassThruIoctl(uint32_t ChannelID, uint32_t ioctlID, void *pInput,
 		case ADD_TO_FUNCT_MSG_LOOKUP_TABLE:
 		case DELETE_FROM_FUNCT_MSG_LOOKUP_TABLE:
 		case READ_PROG_VOLTAGE:
-			last_error("PassThruIoctl ioctlID: 0x%2X is not implemented", ioctlID);
+			last_error("PassThruIoctl ioctlID: %s is not implemented", translateIoctl(ioctlID));
 			break;
 		default:
-			last_error("PassThruIoctl, unknown ioctlID: %2X", ioctlID);
+			last_error("PassThruIoctl, unknown ioctlID: 0x%X", ioctlID);
 	}
-	log_trace("PassThruIoctl err %x", err);
+	log_trace("PassThruIoctl err: %s", translateError(err));
 	return err;
 }
