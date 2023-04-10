@@ -9,7 +9,8 @@
 	"SCI_B_ENGINE" : false,
 	"J1850VPW" : false,
 	"J1850PWM" : false,
-	"FUNCTION_LIB": "~/.passthru/libj2534.so",
+	"SW_CAN_PS" : true,
+	"FUNCTION_LIB": "~/.passthru/libj2534drv.so",
 	"NAME": "J2534",
 	"VENDOR": "WQCAN"
 }

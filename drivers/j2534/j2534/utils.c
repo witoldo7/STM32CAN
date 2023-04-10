@@ -7,7 +7,6 @@
  */ 
 
 #include <errno.h>
-#include <libusb.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

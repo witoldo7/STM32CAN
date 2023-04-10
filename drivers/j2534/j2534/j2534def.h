@@ -52,19 +52,6 @@
 #ifndef __J2534_H
 #define __J2534_H
 
-#ifdef _MSC_VER
-  #ifdef j2534_EXPORTS
-    #define J2534DLL_API extern __declspec(dllexport)
-    #define PTAPI __stdcall
-  #else
-    #define J2534DLL_API __declspec(dllimport)
-  #endif
-#else
-  #define J2534DLL_API
-  #define PTAPI
-#endif
-
-
 //
 // J2534-1 v04.04 ProtocolID Values
 //
@@ -352,12 +339,12 @@ typedef struct {
 
 typedef struct {
 	uint32_t	NumOfParams;	// Number of SCONFIG elements
-	SCONFIG*	ConfigPtr;		// Array of SCONFIG
+	SCONFIG*    ConfigPtr;		// Array of SCONFIG
 } SCONFIG_LIST;
 
 typedef struct {
 	uint32_t	NumOfBytes;		// Number of bytes in the array
-	uint8_t*	BytePtr;		// Array of bytes
+	uint8_t*    BytePtr;		// Array of bytes
 } SBYTE_ARRAY;
 
 typedef struct {
@@ -370,46 +357,17 @@ typedef struct {
 	uint8_t		Data[4128];
 } PASSTHRU_MSG;
 
-//
-// J2534-1 v04.04 Function Prototypes
-//
-J2534DLL_API uint32_t PTAPI	PassThruOpen(void *pName, uint32_t *pDeviceID);
-J2534DLL_API uint32_t PTAPI	PassThruClose(uint32_t DeviceID);
-J2534DLL_API uint32_t PTAPI	PassThruConnect(uint32_t DeviceID, uint32_t ProtocolID, uint32_t Flags, uint32_t BaudRate, uint32_t *pChannelID);
-J2534DLL_API uint32_t PTAPI	PassThruDisconnect(uint32_t ChannelID);
-J2534DLL_API uint32_t PTAPI	PassThruReadMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t *pNumMsgs, uint32_t Timeout);
-J2534DLL_API uint32_t PTAPI	PassThruWriteMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t *pNumMsgs, uint32_t Timeout);
-J2534DLL_API uint32_t PTAPI	PassThruStartPeriodicMsg(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t *pMsgID, uint32_t TimeInterval);
-J2534DLL_API uint32_t PTAPI	PassThruStopPeriodicMsg(uint32_t ChannelID, uint32_t MsgID);
-J2534DLL_API uint32_t PTAPI	PassThruStartMsgFilter(uint32_t ChannelID, uint32_t FilterType, PASSTHRU_MSG *pMaskMsg, PASSTHRU_MSG *pPatternMsg, PASSTHRU_MSG *pFlowControlMsg, uint32_t *pFilterID);
-J2534DLL_API uint32_t PTAPI	PassThruStopMsgFilter(uint32_t ChannelID, uint32_t FilterID);
-J2534DLL_API uint32_t PTAPI	PassThruSetProgrammingVoltage(uint32_t DeviceID, uint32_t PinNumber, uint32_t Voltage);
-J2534DLL_API uint32_t PTAPI	PassThruReadVersion(uint32_t DeviceID, char *pFirmwareVersion, char *pDllVersion, char *pApiVersion);
-J2534DLL_API uint32_t PTAPI	PassThruGetLastError(char *pErrorDescription);
-J2534DLL_API uint32_t PTAPI	PassThruIoctl(uint32_t ChannelID, uint32_t IoctlID, void *pInput, void *pOutput);
-
-//
-// J2534-1 v04.04 Function Typedefs
-// These function typedefs allow simpler use of the J2534 API by
-// allowing you to do things like this:
-// PTCONNECT	pPassThruConnectFunc = GetProcAddress(hModule, "PassThruConnect");
-// if (pPassThruConnectFunc == NULL)
-//     return FALSE;
-// pPassThruConnectFunc(DeviceID, CAN, CAN_29BIT_ID, 500000, &ChannelID);
-//
-typedef uint32_t (PTAPI *PTOPEN)(void *pName, uint32_t *pDeviceID);
-typedef uint32_t (PTAPI *PTCLOSE)(uint32_t DeviceID);
-typedef uint32_t (PTAPI *PTCONNECT)(uint32_t DeviceID, uint32_t ProtocolID, uint32_t Flags, uint32_t BaudRate, uint32_t *pChannelID);
-typedef uint32_t (PTAPI *PTDISCONNECT)(uint32_t ChannelID);
-typedef uint32_t (PTAPI *PTREADMSGS)(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t *pNumMsgs, uint32_t Timeout);
-typedef uint32_t (PTAPI *PTWRITEMSGS)(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t *pNumMsgs, uint32_t Timeout);
-typedef uint32_t (PTAPI *PTSTARTPERIODICMSG)(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t *pMsgID, uint32_t TimeInterval);
-typedef uint32_t (PTAPI *PTSTOPPERIODICMSG)(uint32_t ChannelID, uint32_t MsgID);
-typedef uint32_t (PTAPI *PTSTARTMSGFILTER)(uint32_t ChannelID, uint32_t FilterType, PASSTHRU_MSG *pMaskMsg, PASSTHRU_MSG *pPatternMsg, PASSTHRU_MSG *pFlowControlMsg, uint32_t *pFilterID);
-typedef uint32_t (PTAPI *PTSTOPMSGFILTER)(uint32_t ChannelID, uint32_t FilterID);
-typedef uint32_t (PTAPI *PTSETPROGRAMMINGVOLTAGE)(uint32_t DeviceID, uint32_t PinNumber, uint32_t Voltage);
-typedef uint32_t (PTAPI *PTREADVERSION)(uint32_t DeviceID, char *pFirmwareVersion, char *pDllVersion, char *pApiVersion);
-typedef uint32_t (PTAPI *PTGETLASTERROR)(char *pErrorDescription);
-typedef uint32_t (PTAPI *PTIOCTL)(uint32_t ChannelID, uint32_t IoctlID, void *pInput, void *pOutput);
+enum j2534_command_t {
+  cmd_j2534_connect                = 0xA0,
+  cmd_j2534_disconnect             = 0xA1,
+  cmd_j2534_ioctl                  = 0xA2,
+  cmd_j2534_filter                 = 0xA3,
+  cmd_j2534_stop_filter            = 0xA4,
+  cmd_j2534_read_message           = 0xA5,
+  cmd_j2534_write_message          = 0xA6,
+  cmd_j2534_start_periodic_message = 0xA7,
+  cmd_j2534_stop_periodic_message  = 0xA8,
+  cmd_j2534_misc                   = 0x20,
+};
 
 #endif // __J2534_H

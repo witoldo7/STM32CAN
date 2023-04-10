@@ -1,7 +1,6 @@
 # Compiled source #
 ###################
 drivers/j2534/.cproject
-drivers/j2534/j2534/
 drivers/j2534/build/
 drivers/j2534/.project
 drivers/j2534/.settings/

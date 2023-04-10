@@ -10,8 +10,8 @@
 #define __UTILS_H
 
 #include <stdbool.h>
-#include "j2534.h"
 #include <libusb.h>
+#include "j2534drv.h"
 
 #if defined(_MSC_VER)
 #define snprintf _snprintf
@@ -57,24 +57,6 @@ void thread_join(thread_t thread);
 #endif
 
 #define MAX_LEN	80
-
-enum j2534_command_t {
-  cmd_j2534_connect                = 0xA0,
-  cmd_j2534_disconnect             = 0xA1,
-  cmd_j2534_ioctl                  = 0xA2,
-  cmd_j2534_filter                 = 0xA3,
-  cmd_j2534_stop_filter            = 0xA4,
-  cmd_j2534_read_message           = 0xA5,
-  cmd_j2534_write_message          = 0xA6,
-  cmd_j2534_start_periodic_message = 0xA7,
-  cmd_j2534_stop_periodic_message  = 0xA8,
-  cmd_j2534_misc                   = 0x20,
-};
-
-enum j2534_term_t {
-  cmd_j2534_ack = 0x00,
-  cmd_j2534_nack = 0xFF
-};
 
 typedef struct {
   uint8_t cmd_code; // command code
@@ -163,6 +145,11 @@ typedef struct {
     uint32_t                data32[64 / 4];
   };
 } CANRxFrame;
+
+enum term_command_t {
+  cmd_term_ack = 0x00,
+  cmd_term_nack = 0xFF
+};
 
 extern semaphore_t slock;
 
