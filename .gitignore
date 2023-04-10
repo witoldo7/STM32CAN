@@ -1,5 +1,16 @@
 # Compiled source #
 ###################
+drivers/j2534/.cproject
+drivers/j2534/j2534/
+drivers/j2534/build/
+drivers/j2534/.project
+drivers/j2534/.settings/
+drivers/j2534/CMakeCache.txt
+drivers/j2534/CMakeFiles/
+drivers/j2534/Makefile
+drivers/j2534/cmake_install.cmake
+drivers/j2534/install_manifest.txt
+drivers/j2534/misc/
 .dep
 firmware/build/
 *.o
