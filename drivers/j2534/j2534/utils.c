@@ -13,6 +13,8 @@
 #include <string.h>
 #include "utils.h"
 #include "log.h"
+#include "j2534translate.h"
+
 #ifdef _MSC_VER
 #include <windows.h>
 #elif _POSIX_C_SOURCE >= 199309L
@@ -206,9 +208,12 @@ uint32_t sizeQueue(void) {
 }
 
 void last_error(const char *fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
 	memset(LAST_ERROR, 0, MAX_LEN);
-	snprintf(LAST_ERROR, MAX_LEN, fmt);
-	log_trace(fmt);
+	vsnprintf(LAST_ERROR, MAX_LEN, fmt, args);
+	va_end(args);
+	log_trace(LAST_ERROR);
 }
 
 char *getLastError() {
@@ -218,17 +223,17 @@ char *getLastError() {
 char* parsemsg(PASSTHRU_MSG* msg) {
 	if (msg == NULL)
 		return "NULL";
-	unsigned int length = 0;
+	uint32_t length = 0;
 	length = sprintf(msgBuff,
 		"\tMSG: %p\n"
-		"\t\tProtocolID:\t%lu\n"
+		"\t\tProtocolID:\t%s\n"
 		"\t\tRxStatus:\t%08lX\n"
 		"\t\tTxFlags:\t%08lX\n"
 		"\t\tTimeStamp:\t0x%08lX (%lu \xC2\xB5sec)\n"
 		"\t\tDataSize:\t%lu\n"
 		"\t\tExtraData:\t%lu\n"
 		"\t\tData:\t",
-		msg, msg->ProtocolID, msg->RxStatus, msg->TxFlags, msg->Timestamp,
+		msg, translateProtocol(msg->ProtocolID), msg->RxStatus, msg->TxFlags, msg->Timestamp,
 		msg->Timestamp, msg->DataSize, msg->ExtraDataIndex);
 
 		for (unsigned int i = 0; i < msg->DataSize; i++)
@@ -303,7 +308,7 @@ void convertPacketToPMSG(uint8_t *data, uint16_t len, PASSTHRU_MSG* pMsg) {
 		pMsg->TxFlags = 0;
 		break;
 	default:
-		log_error("convertPacketToPMSG: not supported protocol: %02X", protocol);
+		log_error("convertPacketToPMSG: not supported protocol: %s", translateProtocol(protocol));
 		break;
 	}
 }
