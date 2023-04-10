@@ -147,7 +147,7 @@ bool j2534_connect(packet_t *rx_packet, packet_t *tx_packet) {
   uint32_t protocolID, flags, bitrate, error = ERR_NOT_SUPPORTED;
   if(rx_packet->data_len != 12) {
     memcpy(retBuff, &error, 4);
-    return prepareReplyPacket(tx_packet, rx_packet, retBuff, 8, cmd_j2534_ack);
+    return prepareReplyPacket(tx_packet, rx_packet, retBuff, 8, cmd_term_ack);
   }
   memcpy(&protocolID, rx_packet->data, 4);
   memcpy(&flags, rx_packet->data + 4, 4);
@@ -159,7 +159,7 @@ bool j2534_connect(packet_t *rx_packet, packet_t *tx_packet) {
   memcpy(retBuff, &error, 4);
   memcpy(retBuff + 4, &protocolID, 4);
 
-  return prepareReplyPacket(tx_packet, rx_packet, retBuff, 8, cmd_j2534_ack);
+  return prepareReplyPacket(tx_packet, rx_packet, retBuff, 8, cmd_term_ack);
 }
 
 uint32_t handle_disconnect(j2534_conn* conn) {
@@ -177,7 +177,7 @@ bool j2534_disconnect(packet_t *rx_packet, packet_t *tx_packet) {
   uint32_t channelID, error = ERR_NOT_SUPPORTED;
   if(rx_packet->data_len != 4) {
     memcpy(retBuff, &error, 4);
-    return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_j2534_ack);
+    return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_term_ack);
   }
   memcpy(&channelID, rx_packet->data, 4);
 
@@ -185,7 +185,7 @@ bool j2534_disconnect(packet_t *rx_packet, packet_t *tx_packet) {
   error = handle_disconnect(conn);
   memcpy(retBuff, &error, 4);
 
-  return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_j2534_ack);
+  return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_term_ack);
 }
 
 uint32_t handle_can_filter(j2534_conn* conn, uint8_t* data) {
@@ -237,7 +237,7 @@ bool j2534_start_filter(packet_t *rx_packet, packet_t *tx_packet) {
   j2534_conn* conn = get_connection(channelID);
   error = handle_can_filter(conn, rx_packet->data);
   memcpy(retBuff, &error, 4);
-  return prepareReplyPacket(tx_packet, rx_packet, retBuff, size, cmd_j2534_ack);
+  return prepareReplyPacket(tx_packet, rx_packet, retBuff, size, cmd_term_ack);
 }
 
 bool j2534_stop_filter(packet_t *rx_packet, packet_t *tx_packet) {
@@ -248,7 +248,7 @@ bool j2534_stop_filter(packet_t *rx_packet, packet_t *tx_packet) {
   j2534_conn* conn = get_connection(channelID);
   error = clear_can_filter(conn, filterID);
   memcpy(retBuff, &error, 4);
-  return prepareReplyPacket(tx_packet, rx_packet, retBuff, size, cmd_j2534_ack);
+  return prepareReplyPacket(tx_packet, rx_packet, retBuff, size, cmd_term_ack);
 }
 
 uint32_t handldle_get_config(j2534_conn* conn, SCONFIG_LIST* cfgList) {
@@ -404,7 +404,7 @@ bool j2534_ioctl(packet_t *rx_packet, packet_t *tx_packet) {
   }
   memcpy(retBuff, &err, 4);
 
-  return prepareReplyPacket(tx_packet, rx_packet, retBuff, retSize, cmd_j2534_ack);;
+  return prepareReplyPacket(tx_packet, rx_packet, retBuff, retSize, cmd_term_ack);;
 }
 
 uint32_t write_message(j2534_conn* conn, uint32_t timeout, uint16_t len, uint8_t* data) {
@@ -430,7 +430,7 @@ bool j2534_write_message(packet_t *rx_packet, packet_t *tx_packet) {
   err = write_message(conn, timeout, rx_packet->data_len-8, rx_packet->data+8);
   memcpy(retBuff, &err, 4);
 
-  return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_j2534_ack);
+  return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_term_ack);
 }
 
 uint32_t start_periodic_message(j2534_conn* conn) {
@@ -446,7 +446,7 @@ bool j2534_start_periodic_message(packet_t *rx_packet, packet_t *tx_packet) {
   err = start_periodic_message(conn);
   memcpy(retBuff, &err, 4);
 
-  return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_j2534_ack);
+  return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_term_ack);
 }
 
 uint32_t stop_periodic_message(j2534_conn* conn) {
@@ -462,7 +462,7 @@ bool j2534_stop_periodic_message(packet_t *rx_packet, packet_t *tx_packet) {
   err = stop_periodic_message(conn);
   memcpy(retBuff, &err, 4);
 
-  return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_j2534_ack);
+  return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_term_ack);
 }
 
 bool exec_cmd_j2534(packet_t *rx_packet, packet_t *tx_packet) {

@@ -639,7 +639,7 @@ uint32_t PTAPI PassThruReadVersion(uint32_t DeviceID, char *pFirmwareVersion, ch
 	packet_t version_req = {
 			.cmd_code = cmd_j2534_misc,
 			.data_len = 0,
-			.term = cmd_j2534_ack
+			.term = cmd_term_ack
 	};
 
 	if (usb_send_packet(version_req, WQCAN_TIMEOUT)) {
