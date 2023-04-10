@@ -216,7 +216,7 @@ bool canMemorryConfig(CANDriver *canp, CANConfig *can_cfg, CANRamConfig *cfg, CA
  * Try to compute the timing registers for the can interface and set the configuration
  * https://github.com/paparazzi/paparazzi/blob/master/sw/airborne/arch/chibios/modules/uavcan/uavcan.c
  */
-bool canBaudRate(CANConfig *can_cfg, uint32_t can_baudrate) {
+bool canBaudRate(CANConfig *can_cfg, uint32_t can_baudrate, uint32_t *sjw, uint32_t *bsp) {
   if (can_baudrate < 1) {
     return false;
   }
@@ -296,6 +296,11 @@ bool canBaudRate(CANConfig *can_cfg, uint32_t can_baudrate) {
     bs2 = bs1_bs2_sum - bs1;
     sample_point_permill = 1000 * (1 + bs1) / (1 + bs1 + bs2);
   }
+
+  if (bsp != NULL)
+    *bsp = sample_point_permill/1000;
+  if (sjw != NULL)
+    *sjw = bs1;
 
   /*
     * Final validation

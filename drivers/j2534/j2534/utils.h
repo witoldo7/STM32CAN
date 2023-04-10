@@ -49,6 +49,7 @@ typedef sem_t * semaphore_t;
 semaphore_t semaphore_create(char* semname);
 void semaphore_give(semaphore_t semaphore);
 void semaphore_take(semaphore_t semaphore);
+int semaphore_take_timeout(semaphore_t semaphore, uint32_t timeout);
 void semaphore_destroy(semaphore_t semaphore);
 int thread_create(thread_t *thread,
 	void *(*thread_entry)(void *arg), void *arg);
@@ -56,15 +57,18 @@ void thread_join(thread_t thread);
 #endif
 
 #define MAX_LEN	80
+
 enum j2534_command_t {
-  cmd_j2534_connect = 0xA0,
-  cmd_j2534_disconnect = 0xA1,
-  cmd_j2534_ioctl = 0xA2,
-  cmd_j2534_filter = 0xA3,
-  cmd_j2534_read_message = 0xA4,
-  cmd_j2534_write_message = 0xA5,
-  cmd_j2534_periodic_message = 0xA6,
-  cmd_j2534_misc = 0x20,
+  cmd_j2534_connect                = 0xA0,
+  cmd_j2534_disconnect             = 0xA1,
+  cmd_j2534_ioctl                  = 0xA2,
+  cmd_j2534_filter                 = 0xA3,
+  cmd_j2534_stop_filter            = 0xA4,
+  cmd_j2534_read_message           = 0xA5,
+  cmd_j2534_write_message          = 0xA6,
+  cmd_j2534_start_periodic_message = 0xA7,
+  cmd_j2534_stop_periodic_message  = 0xA8,
+  cmd_j2534_misc                   = 0x20,
 };
 
 enum j2534_term_t {

@@ -114,7 +114,7 @@ void swab(uint16_t *word);
 uint16_t getSupplyVoltage(void);
 void get_vbat(uint8_t *vbat);
 uint8_t can_fd_dlc2len(uint8_t dlc);
-bool canBaudRate(CANConfig *can_cfg, uint32_t can_baudrate);
+bool canBaudRate(CANConfig *can_cfg, uint32_t can_baudrate, uint32_t *sjw, uint32_t *bsp);
 bool canMemorryConfig(CANDriver *canp, CANConfig *can_cfg, CANRamConfig *cfg, CAN_RamAddress *msgRam);
 void canGlobalFilter(CANConfig *can_cfg, uint32_t NonMatchingStd, uint32_t NonMatchingExt, uint32_t RejectRemoteStd,
                      uint32_t RejectRemoteExt);

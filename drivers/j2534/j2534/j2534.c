@@ -23,8 +23,9 @@
 #define WQCAN_TIMEOUT	    100                         /* Connection timeout (in ms) */
 
 static libusb_device_handle *handle;
-static uint8_t databuf[128];
-static struct libusb_transfer *data_transfer = NULL;
+#define ASYNC_TRANSFERS 4
+static uint8_t databuf[ASYNC_TRANSFERS][128];
+static struct libusb_transfer *data_transfer[ASYNC_TRANSFERS] = {NULL};
 
 uint8_t data[32];
 packet_t tx_packet = {.data = data};
@@ -34,16 +35,19 @@ packet_t resp_packet = {.data = rspdata};
 
 static bool isOpen = false;
 static volatile sig_atomic_t do_exit = 0;
-static semaphore_t wait_for_response_semaphore, txSem, rxSem;
+static semaphore_t wait_for_response_semaphore, wTxSem, txSem, rxSem;
 semaphore_t slock;
 static thread_t poll_thread;
-
+static uint32_t rx_counter=0;
+static uint32_t tx_counter=0;
 static void request_exit() {
 	do_exit = 1;
-	libusb_cancel_transfer(data_transfer);
+	for (uint8_t i = 0; i < ASYNC_TRANSFERS; i++)
+		libusb_cancel_transfer(data_transfer[i]);
 	semaphore_destroy(wait_for_response_semaphore);
 	semaphore_destroy(rxSem);
 	semaphore_destroy(txSem);
+	semaphore_destroy(wTxSem);
 	semaphore_destroy(slock);
 	log_trace("poll thread shutting down");
 	thread_join(poll_thread);
@@ -100,7 +104,7 @@ static void setup_signals(void) {
 #endif
 }
 
-static void LIBUSB_CALL cb_data(struct libusb_transfer *transfer) {
+static void LIBUSB_CALL cb_process(struct libusb_transfer *transfer, struct libusb_transfer *data) {
 	if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
 		log_error("transfer status: %d", transfer->status);
 		goto err_free_transfer;
@@ -110,7 +114,7 @@ static void LIBUSB_CALL cb_data(struct libusb_transfer *transfer) {
 
 	if ((data_len + 4) != transfer->actual_length) {
 		log_error("Packet incomplete, transfer size: %d, packet size %d", transfer->actual_length, (data_len + 4));
-		if (libusb_submit_transfer(data_transfer) < 0)
+		if (libusb_submit_transfer(data) < 0)
 			goto err_free_transfer;
 		return;
 	}
@@ -120,7 +124,8 @@ static void LIBUSB_CALL cb_data(struct libusb_transfer *transfer) {
 	case cmd_j2534_disconnect:
 	case cmd_j2534_ioctl:
 	case cmd_j2534_filter:
-	case cmd_j2534_periodic_message:
+	case cmd_j2534_start_periodic_message:
+	case cmd_j2534_stop_periodic_message:
 	case cmd_j2534_misc:
 		resp_packet.cmd_code = transfer->buffer[0];
 		resp_packet.data_len = data_len;
@@ -133,10 +138,9 @@ static void LIBUSB_CALL cb_data(struct libusb_transfer *transfer) {
 		tx_packet.data_len = data_len;
 		tx_packet.term = transfer->buffer[transfer->actual_length - 1];
 		memcpy(tx_packet.data, transfer->buffer + 3, data_len);
-		semaphore_give(wait_for_response_semaphore);
+		semaphore_give(wTxSem);
 		break;
 	case cmd_j2534_read_message:
-		log_trace("new rx");
 		PASSTHRU_MSG pMsg = { 0 };
 		convertPacketToPMSG(transfer->buffer +3, data_len, &pMsg);
 		enQueue(pMsg);
@@ -145,42 +149,61 @@ static void LIBUSB_CALL cb_data(struct libusb_transfer *transfer) {
 		break;
 	}
 
-	if (libusb_submit_transfer(data_transfer) < 0)
+	if (libusb_submit_transfer(data) < 0)
 		goto err_free_transfer;
 
 	return;
 
 err_free_transfer:
 	log_error("err_free_transfer");
-	if (transfer != NULL) {
-		libusb_free_transfer(transfer);
-		data_transfer = NULL;
+	if (data != NULL) {
+		libusb_free_transfer(data);
+		data = NULL;
 	}
 }
 
+static void LIBUSB_CALL cb_data(struct libusb_transfer *transfer) {
+	cb_process(transfer, data_transfer[0]);
+}
+static void LIBUSB_CALL cb_data1(struct libusb_transfer *transfer) {
+	cb_process(transfer, data_transfer[1]);
+}
+static void LIBUSB_CALL cb_data2(struct libusb_transfer *transfer) {
+	cb_process(transfer, data_transfer[2]);
+}
+static void LIBUSB_CALL cb_data3(struct libusb_transfer *transfer) {
+	cb_process(transfer, data_transfer[3]);
+}
+
+libusb_transfer_cb_fn transfer[4] = {cb_data, cb_data1, cb_data2, cb_data3};
+
 static int alloc_transfers(void) {
-	data_transfer = libusb_alloc_transfer(0);
-	if (!data_transfer) {
-		errno = ENOMEM;
-		return -1;
+	for (uint8_t i = 0; i < ASYNC_TRANSFERS; i++) {
+		data_transfer[i] = libusb_alloc_transfer(0);
+		if (!data_transfer) {
+			errno = ENOMEM;
+			return -1;
+		}
+
+		libusb_fill_bulk_transfer(data_transfer[i], handle, WQCAN_USB_EP_IN, databuf[i],
+			sizeof(databuf)/ASYNC_TRANSFERS, transfer[i], NULL, 0);
 	}
-
-	libusb_fill_bulk_transfer(data_transfer, handle, WQCAN_USB_EP_IN, databuf,
-		sizeof(databuf), cb_data, NULL, 0);
-
 	return 0;
 }
 
 static int usb_send_packet(packet_t packet, unsigned int timeout) {
+	Lock(txSem, tx_counter);
 	int bytes_written = 0, r = LIBUSB_ERROR_OTHER;
-	uint8_t buff[1024] ={0};
+	uint8_t buff[128] ={0};
 	uint16_t len = covertPacketToBuffer(&packet, buff);
 	if (len > 0) {
-		r = libusb_bulk_transfer(handle, WQCAN_USB_EP_OUT, buff, (int)len, &bytes_written, timeout);
+		r = libusb_bulk_transfer(handle, WQCAN_USB_EP_OUT, buff, (int)len, &bytes_written, 0);
+		sleep_ms(3);
 	}
 	if (r != LIBUSB_SUCCESS) {
 		last_error("USB data transfer error sending %d bytes: %s", (int)len, libusb_error_name(r));
 	}
+	Unlock(txSem, tx_counter);
 	return r;
 }
 
@@ -224,6 +247,7 @@ uint32_t PTAPI PassThruOpen(void *pName, uint32_t *pDeviceID) {
 	setup_signals();
 
 	wait_for_response_semaphore = semaphore_create("resp");
+	wTxSem = semaphore_create("wTxSem");
 	slock = semaphore_create("slock");
 	txSem = semaphore_create("txSem");
 	rxSem = semaphore_create("rxSem");
@@ -238,19 +262,20 @@ uint32_t PTAPI PassThruOpen(void *pName, uint32_t *pDeviceID) {
 		last_error("failed to initialize poll thread");
 		goto out_deinit;
 	}
-
-	r = libusb_submit_transfer(data_transfer);
-	if (r < 0) {
-		last_error("libusb_submit_transfer error %d", r);
+	for (uint8_t i = 0; i < ASYNC_TRANSFERS; i++) {
+		r = libusb_submit_transfer(data_transfer[i]);
+		if (r < 0) {
+			last_error("libusb_submit_transfer error %d", r);
+			goto out_deinit;
+		}
 	}
-
 	last_error("PassThruOpen Interface claimed");
 	isOpen = true;
 	return STATUS_NOERROR;
 
 out_deinit:
 	if (data_transfer)
-		libusb_free_transfer(data_transfer);
+		libusb_free_transfer(data_transfer[0]);
 	return ERR_FAILED;
 }
 
@@ -300,7 +325,7 @@ uint32_t PTAPI PassThruConnect(uint32_t DeviceID, uint32_t protocolID,
 	memcpy(&channelID, resp_packet.data +  sizeof(err), sizeof(channelID));
 
 	*pChannelID = channelID;
-	log_trace("PassThruConnect: cid: %lu, err:%lu", *pChannelID, err);
+	log_trace("PassThruConnect: cid: %lu, err:%x", *pChannelID, err);
 	return err;
 }
 
@@ -352,7 +377,6 @@ uint32_t coppyMessages(PASSTHRU_MSG* pMsg, uint32_t pNumMsgs) {
 /*
  * Read message(s) from a protocol channel.
  */
-static uint32_t rx_counter=0;
 uint32_t PTAPI PassThruReadMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t *pNumMsgs, uint32_t Timeout) {
 	Lock(rxSem, rx_counter);
 	log_trace("PassThruReadMsgs: ChannelID:%lu, Timeout: %u msec, numMsg: %lu", ChannelID, Timeout, *pNumMsgs);
@@ -371,11 +395,8 @@ uint32_t PTAPI PassThruReadMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t
 	}
 
 	uint32_t err = ERR_NOT_SUPPORTED;
-	uint32_t tm = Timeout*100;
+	uint32_t tm = Timeout*10;
 	if (Timeout > 0) {
-		if (Timeout < 10)
-			tm = 1000;
-
 		bool exit = false;
 		for (uint32_t i = 0; (i < tm) & !do_exit & !exit; i++) {
 		//while(!do_exit & !exit) {
@@ -388,7 +409,7 @@ uint32_t PTAPI PassThruReadMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t
 				exit = true;
 				break;
 			}
-			sleep_ms(10);
+		sleep_ms(1);
 		}
 
 		if (queueSize == 0) {
@@ -416,9 +437,8 @@ uint32_t PTAPI PassThruReadMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t
 /*
  * Write message(s) to a protocol channel.
  */
-static uint32_t tx_counter=0;
 uint32_t PTAPI PassThruWriteMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t *pNumMsgs, uint32_t timeInterval) {
-	Lock(txSem, tx_counter);
+
 	log_trace("PassThruWriteMsgs: ChannelID: %lu, NumMsg: %lu, Interval: %lu msec\r\n MSG: %s", ChannelID, *pNumMsgs, timeInterval, parsemsg(pMsg));
 	if (!isOpen)
 		return ERR_INVALID_DEVICE_ID;
@@ -455,13 +475,15 @@ uint32_t PTAPI PassThruWriteMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_
 			return ERR_FAILED;
 		}
 
-		while (!do_exit & (tx_packet.cmd_code != cmd_j2534_write_message))
-			semaphore_take(wait_for_response_semaphore);
+		if(semaphore_take_timeout(wTxSem, 1000) == -1) {
+			return ERR_TIMEOUT;
+		}
 
 		memcpy(&err, tx_packet.data, sizeof(err));
 	}
+
 	log_trace("PassThruWriteMsgs err: %lu", err);
-	Unlock(txSem, tx_counter);
+
 	return STATUS_NOERROR;
 }
 
@@ -493,7 +515,7 @@ uint32_t PTAPI PassThruStopPeriodicMsg(uint32_t ChannelID, uint32_t msgID) {
  * Start filtering incoming messages on a protocol channel.
  */
 uint32_t PTAPI PassThruStartMsgFilter(uint32_t ChannelID, uint32_t FilterType, PASSTHRU_MSG *pMaskMsg,
-								  PASSTHRU_MSG *pPatternMsg, PASSTHRU_MSG *pFlowControlMsg, uint32_t *pMsgID) {
+								  PASSTHRU_MSG *pPatternMsg, PASSTHRU_MSG *pFlowControlMsg, uint32_t *pFilterID) {
 	log_trace("PassThruStartMsgFilter: ChannelID: %lu, FilterType: %lu, \n pMaskMsg: %s \n pPatternMsg: %s \n pFlowControlMsg: %s",
 			  ChannelID, FilterType, parsemsg(pMaskMsg), parsemsg(pPatternMsg), parsemsg(pFlowControlMsg));
 	if (!isOpen)
@@ -525,7 +547,7 @@ uint32_t PTAPI PassThruStartMsgFilter(uint32_t ChannelID, uint32_t FilterType, P
 	packet_t txPacket = {.data = buff, .cmd_code = cmd_j2534_filter, .data_len = 44};
 	uint32_t size = pMaskMsg->DataSize;
 	memcpy(buff, &ChannelID, sizeof(ChannelID));
-	memcpy(buff + 4, &pMaskMsg->TxFlags, 8);
+	memcpy(buff + 4, &pMaskMsg->TxFlags, 4);
 	memcpy(buff + 8, &pMaskMsg->ProtocolID, 2);
 	buff[10] = (uint8_t)FilterType;
 	buff[11] = size;
@@ -536,7 +558,7 @@ uint32_t PTAPI PassThruStartMsgFilter(uint32_t ChannelID, uint32_t FilterType, P
 	}
 
 	if (usb_send_packet(txPacket, WQCAN_TIMEOUT)) {
-		last_error("PassThruWriteMsgs: Tx USB failed");
+		last_error("PassThruStartMsgFilter: Tx USB failed");
 		return ERR_FAILED;
 	}
 
@@ -544,22 +566,38 @@ uint32_t PTAPI PassThruStartMsgFilter(uint32_t ChannelID, uint32_t FilterType, P
 		semaphore_take(wait_for_response_semaphore);
 
 	memcpy(&err, resp_packet.data, sizeof(err));
-	*pMsgID = resp_packet.data[4];
+	*pFilterID = resp_packet.data[4];
 
-	log_trace("PassThruStartMsgFilter err: %lu, filterID: %lu", err, *pMsgID);
+	log_trace("PassThruStartMsgFilter err: %lu, filterID: %lu", err, *pFilterID);
 	return err;
 }
 
 /*
  * Stops filtering incoming messages on a protocol channel.
  */
-uint32_t PTAPI PassThruStopMsgFilter(uint32_t ChannelID, uint32_t msgID) {
-	log_trace("PassThruStopMsgFilter: ChannelID: lu, msgID: %lu", ChannelID, msgID);
+uint32_t PTAPI PassThruStopMsgFilter(uint32_t ChannelID, uint32_t FilterID) {
+	log_trace("PassThruStopMsgFilter: ChannelID: lu, filterID: %lu", ChannelID, FilterID);
 	if (!isOpen)
 		return ERR_INVALID_DEVICE_ID;
 
-	last_error("PassThruStopMsgFilter is not implemented");
-	return ERR_NOT_SUPPORTED;
+	uint32_t err = ERR_NOT_SUPPORTED;
+	uint8_t buff[8] = { 0 };
+	packet_t txPacket = {.data = buff, .cmd_code = cmd_j2534_stop_filter, .data_len = 8};
+	memcpy(buff, &ChannelID, sizeof(ChannelID));
+	memcpy(buff + sizeof(ChannelID), &FilterID, sizeof(FilterID));
+
+	if (usb_send_packet(txPacket, WQCAN_TIMEOUT)) {
+		last_error("PassThruStopMsgFilter: Tx USB failed");
+		return ERR_FAILED;
+	}
+
+	while (!do_exit & (resp_packet.cmd_code != cmd_j2534_stop_filter))
+		semaphore_take(wait_for_response_semaphore);
+
+	memcpy(&err, resp_packet.data, sizeof(err));
+
+	last_error("PassThruStopMsgFilter err: %x", err);
+	return err;
 }
 
 /*
@@ -608,20 +646,18 @@ uint32_t PTAPI PassThruReadVersion(uint32_t DeviceID, char *pFirmwareVersion, ch
 		last_error("PassThruReadVersion: Tx USB failed");
 		return ERR_FAILED;
 	}
-
 	while (resp_packet.cmd_code != cmd_j2534_misc)
 		semaphore_take(wait_for_response_semaphore);
-
 	_snprintf_s(fw_version, MAX_LEN, MAX_LEN, "STM32CAN v%d.%d", resp_packet.data[0], resp_packet.data[1]);
-
 	if (fw_version[0] != 0)
-		strcpy_s(pFirmwareVersion, sizeof(fw_version), fw_version);
+		strcpy(pFirmwareVersion, fw_version);
 	else 
-		strcpy_s(pFirmwareVersion, 11, "unavailable");
+		strcpy(pFirmwareVersion, "unavailable");
 
-	strcpy_s(pDllVersion, 5, J2534_DLL_VERSION);
-	strcpy_s(pApiVersion, 5, J2534_APIVER_NOVEMBER_2004);
+	strcpy(pDllVersion, J2534_DLL_VERSION);
+	strcpy(pApiVersion, J2534_APIVER_NOVEMBER_2004);
 
+	log_trace("PassThruReadVersion: pFirmwareVersion: %s, pDllVersion: %s pApiVersion: %s", pFirmwareVersion, pDllVersion, pApiVersion);
 	return STATUS_NOERROR;
 }
 
@@ -650,18 +686,71 @@ uint32_t PTAPI PassThruIoctl(uint32_t ChannelID, uint32_t ioctlID, void *pInput,
 		return ERR_INVALID_DEVICE_ID;
 
 	uint32_t err = ERR_NOT_SUPPORTED;
-	uint8_t buff[24] = { 0 };
+	uint8_t buff[256] = { 0 };
 	packet_t txPacket = {.data = buff, .cmd_code = cmd_j2534_ioctl};
-	memcpy(buff, &ChannelID, sizeof(ChannelID));
-	memcpy(buff + 4, &ioctlID, sizeof(ioctlID));
+	uint8_t offset = 0;
+	memcpy(buff + offset, &ChannelID, sizeof(ChannelID));
+	offset += sizeof(ChannelID);
+	memcpy(buff + offset, &ioctlID, sizeof(ioctlID));
+	offset += sizeof(ioctlID);
 
 	switch(ioctlID) {
 		case GET_CONFIG:
-			//const SCONFIG_LIST *inputlist = pInput;
-			last_error("PassThruIoctl ioctlID: %x is not implemented", ioctlID);
+			const SCONFIG_LIST* inputlist = pInput;
+			memcpy(buff + offset, &inputlist->NumOfParams, sizeof(inputlist->NumOfParams));
+			offset += sizeof(inputlist->NumOfParams);
+			uint8_t gsize = sizeof(SCONFIG) * inputlist->NumOfParams;
+			memcpy(buff + offset, inputlist->ConfigPtr, gsize);
+
+			txPacket.data_len = offset + gsize;
+			if (usb_send_packet(txPacket, WQCAN_TIMEOUT)) {
+				last_error("PassThruIoctl: Tx USB failed");
+				return ERR_FAILED;
+			}
+
+			while (!do_exit & (resp_packet.cmd_code != cmd_j2534_ioctl))
+				semaphore_take(wait_for_response_semaphore);
+
+			memcpy(&err, resp_packet.data, sizeof(err));
+
+			if (err != STATUS_NOERROR) {
+				for (uint8_t i = 0; i < inputlist->NumOfParams; i++) {
+					SCONFIG* cfg = &inputlist->ConfigPtr[i];
+					log_trace("GET_CONFIG: num: %d, parameter: %x", i, cfg->Parameter);
+				}
+				log_trace("Received only error: %x", err);
+				return err;
+			}
+
+			memcpy(inputlist->ConfigPtr, resp_packet.data + 8, gsize);
+
+
+			for (uint8_t i = 0; i < inputlist->NumOfParams; i++) {
+				SCONFIG* cfg = &inputlist->ConfigPtr[i];
+				log_trace("GET_CONFIG: num: %d, parameter: %x value %x", i, cfg->Parameter, cfg->Value);
+			}
 			break;
 		case SET_CONFIG:
-			last_error("PassThruIoctl ioctlID: %x is not implemented", ioctlID);
+			const SCONFIG_LIST* list = pInput;
+			for (uint8_t i = 0; i < list->NumOfParams; i++) {
+				SCONFIG *cfg = &list->ConfigPtr[i];
+				log_trace("SET_CONFIG: num: %d, parameter: %x value %x", i, cfg->Parameter, cfg->Value);
+			}
+			memcpy(buff + offset, &list->NumOfParams, sizeof(list->NumOfParams));
+			offset += sizeof(list->NumOfParams);
+			uint8_t size = sizeof(SCONFIG) * list->NumOfParams;
+			memcpy(buff + offset, list->ConfigPtr, size);
+			txPacket.data_len = offset + size;
+
+			if (usb_send_packet(txPacket, WQCAN_TIMEOUT)) {
+				last_error("PassThruIoctl: Tx USB failed");
+				return ERR_FAILED;
+			}
+
+			while (!do_exit & (resp_packet.cmd_code != cmd_j2534_ioctl))
+				semaphore_take(wait_for_response_semaphore);
+
+			memcpy(&err, resp_packet.data, sizeof(err));
 			break;
 		case READ_VBATT:
 			txPacket.data_len = 8;
@@ -678,10 +767,7 @@ uint32_t PTAPI PassThruIoctl(uint32_t ChannelID, uint32_t ioctlID, void *pInput,
 			memcpy(&voltage, resp_packet.data + sizeof(err), sizeof(voltage));
 			log_trace("Voltage: %d", voltage);
 			*(uint32_t*)pOutput = voltage;
-			err = STATUS_NOERROR;
 			break;
-		case FIVE_BAUD_INIT:
-		case FAST_INIT:
 		case CLEAR_TX_BUFFER:
 			log_trace("Clear TX queue");
 			err = STATUS_NOERROR;
@@ -691,7 +777,6 @@ uint32_t PTAPI PassThruIoctl(uint32_t ChannelID, uint32_t ioctlID, void *pInput,
 			clearQueue();
 			err = STATUS_NOERROR;
 			break;
-		case CLEAR_PERIODIC_MSGS:
 		case CLEAR_MSG_FILTERS:
 			log_trace("Clear Msg filters");
 			txPacket.data_len = 8;
@@ -705,6 +790,9 @@ uint32_t PTAPI PassThruIoctl(uint32_t ChannelID, uint32_t ioctlID, void *pInput,
 
 			memcpy(&err, resp_packet.data, sizeof(err));
 			break;
+		case FIVE_BAUD_INIT:
+		case FAST_INIT:
+		case CLEAR_PERIODIC_MSGS:
 		case CLEAR_FUNCT_MSG_LOOKUP_TABLE:
 		case ADD_TO_FUNCT_MSG_LOOKUP_TABLE:
 		case DELETE_FROM_FUNCT_MSG_LOOKUP_TABLE:

@@ -58,6 +58,13 @@ void semaphore_take(semaphore_t semaphore) {
 	(void)WaitForSingleObject(semaphore, INFINITE);
 }
 
+int semaphore_take_timeout(semaphore_t semaphore, uint32_t timeout) {
+	if (WaitForSingleObject(semaphore, timeout)) {
+		return -1;
+	}
+	return 0;
+}
+
 void semaphore_destroy(semaphore_t semaphore) {
 	(void)CloseHandle(semaphore);
 }
@@ -101,6 +108,16 @@ void semaphore_take(semaphore_t semaphore) {
 	(void)sem_wait(semaphore);
 }
 
+int semaphore_take_timeout(semaphore_t semaphore, uint32_t timeout) {
+	struct timespec ts;
+	clock_gettime(CLOCK_REALTIME, &ts);
+	ts.tv_sec += 1;
+	int s = 0;
+	while ((s = sem_timedwait(semaphore, &ts)) == -1 && errno == EINTR)
+	  continue;
+	return s;
+}
+
 void semaphore_destroy(semaphore_t semaphore) {
 	(void)sem_close(semaphore);
 }
@@ -123,7 +140,7 @@ static volatile PASSTHRU_MSG queue[512] = {0};
 static uint32_t front = 0;
 static uint32_t rear = 0;
 static uint32_t queue_size = 0;
-static uint32_t m_counter=0;
+static volatile uint32_t m_counter=0;
 
 void LockRx() {
 	if (m_counter++ > 1) {
@@ -185,9 +202,7 @@ void clearQueue(void) {
 }
 
 uint32_t sizeQueue(void) {
-	//LockRx();
 	uint32_t q = queue_size;
-    //UnlockRx();
     return q;
 }
 
@@ -269,24 +284,23 @@ void convertPacketToPMSG(uint8_t *data, uint16_t len, PASSTHRU_MSG* pMsg) {
 	case CAN:
 	case CAN_PS:
 	case SW_CAN_PS:
-		CANRxFrame rxMsg = {0};
-		memcpy(&rxMsg, data + 2, len - 2);
+		CANRxFrame *rxMsg = (CANRxFrame*)(data+2);
 		pMsg->ProtocolID = protocol;
-		pMsg->DataSize = rxMsg.DLC + 4;
+		pMsg->DataSize = rxMsg->DLC + 4;
 		pMsg->ExtraDataIndex = 0;
 		uint32_t id = 0;
-		if (rxMsg.common.XTD)
-			id = rxMsg.ext.EID & 0x1FFFFFFF;
+		if (rxMsg->common.XTD)
+			id = rxMsg->ext.EID & 0x1FFFFFFF;
 		else
-			id = rxMsg.std.SID & 0x7FF;
+			id = rxMsg->std.SID & 0x7FF;
 
 		pMsg->Data[0] = (uint8_t)(id >> 24);
 		pMsg->Data[1] = (uint8_t)(id >> 16);
 		pMsg->Data[2] = (uint8_t)(id >> 8);
 		pMsg->Data[3] = (uint8_t)id;
-		memcpy(pMsg->Data + 4, rxMsg.data8, rxMsg.DLC);
-		pMsg->Timestamp = rxMsg.RXTS;
-		pMsg->RxStatus = (rxMsg.common.XTD ? CAN_29BIT_ID : 0) | TX_MSG_TYPE;
+		memcpy(pMsg->Data + 4, rxMsg->data8, rxMsg->DLC);
+		pMsg->Timestamp = rxMsg->RXTS;
+		pMsg->RxStatus = (rxMsg->common.XTD ? CAN_29BIT_ID : 0) | TX_MSG_TYPE;
 		pMsg->TxFlags = 0;
 		break;
 	default:

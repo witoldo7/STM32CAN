@@ -248,7 +248,7 @@ bool socketcan_bitrateHs(packet_t *rx_packet, packet_t *tx_packet) {
      case 4:
        uint32_t bitrate = rx_packet->data[3] | (uint32_t)*rx_packet->data << 0x18 | (uint32_t)rx_packet->data[1] << 0x10
            | (uint32_t)rx_packet->data[2] << 8;
-       bool ret = canBaudRate(&canConfig1, bitrate);
+       bool ret = canBaudRate(&canConfig1, bitrate, NULL, NULL);
        return ret && prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
        break;
      case 5:
@@ -278,7 +278,7 @@ bool socketcan_bitrateSw(packet_t *rx_packet, packet_t *tx_packet) {
     uint32_t bitrate = rx_packet->data[3] | (uint32_t)*rx_packet->data << 0x18 | (uint32_t)rx_packet->data[1] << 0x10
         | (uint32_t)rx_packet->data[2] << 8;
 
-    return canBaudRate(&canConfig2, bitrate) && prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+    return canBaudRate(&canConfig2, bitrate, NULL, NULL) && prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
   }
   return false;
 }

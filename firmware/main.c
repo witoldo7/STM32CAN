@@ -49,23 +49,8 @@ void dataReceived(USBDriver *usbp, usbep_t ep) {
   (void)usbp;
   (void)ep;
   chSysLockFromISR();
-  chSemSignalI(&rxSem);        //memset(receiveBuf, 0, OUT_PACKETSIZE*2);
-
+  chSemSignalI(&rxSem);
   chSysUnlockFromISR();
-}
-
-bool combiConfigureHookI(USBDriver *usbp) {
-  if (usbGetDriverStateI(usbp) != USB_ACTIVE) {
-    return true;
-  }
-
-  if (usbGetReceiveStatusI(usbp, EP_OUT)) {
-    return true;
-  }
-
-  usbStartReceiveI(usbp, EP_OUT, receiveBuf, IN_PACKETSIZE);
-
-  return false;
 }
 
 static THD_WORKING_AREA(usb_rx_wa, 8196);
@@ -185,9 +170,6 @@ static THD_FUNCTION(can_rx, p) {
       if (!hscan_rx_cb(&rxmsg, &tx_packet))
         continue;
       size = covertPacketToBuffer(&tx_packet, buffer);
-      while(!(((USBDriver*)&USBD1)->state == USB_ACTIVE)) {
-        __asm("nop");
-      }
       usb_send(&USBD1, EP_IN, buffer, size);
     }
   }

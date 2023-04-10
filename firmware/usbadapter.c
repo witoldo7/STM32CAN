@@ -321,6 +321,22 @@ static bool requests_hook(USBDriver *usbp) {
   return sduRequestsHook(usbp);
 }
 
+
+bool combiConfigureHookI(USBDriver *usbp) {
+  if (usbGetDriverStateI(usbp) != USB_ACTIVE) {
+    return true;
+  }
+
+  if (usbGetReceiveStatusI(usbp, EP_OUT)) {
+    return true;
+  }
+
+  usbStartReceiveI(usbp, EP_OUT, receiveBuf, IN_PACKETSIZE);
+
+  return false;
+}
+
+
 /*
  * Handles the USB driver global events.
  */
@@ -348,6 +364,9 @@ void dataTransmitted(USBDriver *usbp, usbep_t ep) {
 
 void usb_send(USBDriver *usbp, usbep_t ep, const uint8_t *buf, size_t n) {
   while (is_transmiting) {
+    __asm("nop");
+  }
+  while(!(usbp->state == USB_ACTIVE)) {
     __asm("nop");
   }
   osalSysLock();
