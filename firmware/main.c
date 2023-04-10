@@ -150,20 +150,19 @@ static THD_FUNCTION(combi, arg) {
 static THD_WORKING_AREA(can_rx_wa, 4096);
 static THD_FUNCTION(can_rx, p) {
   (void)p;
-  //event_listener_t el;
+  event_listener_t el;
   static CANRxFrame rxmsg = {};
   static uint8_t size = 0;
   static uint8_t buffer[80] = {0};
   static uint8_t canbuff[66] = {0};
   packet_t tx_packet = {.data = canbuff};
   chRegSetThreadName("can receiver");
-  //chEvtRegister(&CAND1.rxfull_event, &el, 0);
+  chEvtRegister(&CAND1.rxfull_event, &el, 0);
 
   while (true) {
-    // TODO: check from LLD side, some frame are dropped
-   // if (chEvtWaitAnyTimeout(ALL_EVENTS, TIME_MS2I(100)) == 0) {
-     // continue;
-    //}
+    if (chEvtWaitAnyTimeout(ALL_EVENTS, TIME_IMMEDIATE) == 0) {
+      continue;
+    }
     while (canReceive(&CAND1, CAN_ANY_MAILBOX, &rxmsg, TIME_IMMEDIATE) == MSG_OK ) {
       if (hscan_rx_cb == NULL)
         continue;
@@ -173,7 +172,7 @@ static THD_FUNCTION(can_rx, p) {
       usb_send(&USBD1, EP_IN, buffer, size);
     }
   }
- // chEvtUnregister(&CAND1.rxfull_event, &el);
+  chEvtUnregister(&CAND1.rxfull_event, &el);
 }
 
 static THD_WORKING_AREA(swcan_rx_wa, 4096);
@@ -182,8 +181,8 @@ static THD_FUNCTION(swcan_rx, p) {
   event_listener_t el;
   CANRxFrame rxmsg = {};
   uint8_t size = 0;
-  uint8_t buffer[IN_PACKETSIZE] = {0};
-  uint8_t packetbuff[16] = {0};
+  uint8_t buffer[80] = {0};
+  uint8_t packetbuff[66] = {0};
   packet_t tx_packet = {.data = packetbuff};
   chRegSetThreadName("swcan receiver");
   chEvtRegister(&CAND2.rxfull_event, &el, 0);
@@ -193,9 +192,9 @@ static THD_FUNCTION(swcan_rx, p) {
       continue;
     }
     while (canReceive(&CAND2, CAN_ANY_MAILBOX, &rxmsg, TIME_IMMEDIATE) == MSG_OK ) {
-      if (hscan_rx_cb == NULL)
+      if (swcan_rx_cb == NULL)
         continue;
-      if (!hscan_rx_cb(&rxmsg, &tx_packet))
+      if (!swcan_rx_cb(&rxmsg, &tx_packet))
         continue;
       size = covertPacketToBuffer(&tx_packet, buffer);
       usb_send(&USBD1, EP_IN, buffer, size);
