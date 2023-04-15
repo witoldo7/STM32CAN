@@ -125,8 +125,8 @@
 #define PD02_SDIO_CMD                  2U
 #define PD03                           3U
 #define PD04                           4U
-#define PD05                           5U
-#define PD06                           6U
+#define PD05_KL_TX                     5U
+#define PD06_KL_RX                     6U
 #define PD07_SDIO_CD                   7U
 #define PD08                           8U
 #define PD09                           9U
@@ -614,8 +614,8 @@
                      PIN_MODE_ALTERNATE(PD02_SDIO_CMD) | \
                      PIN_MODE_INPUT(PD03) | \
                      PIN_MODE_INPUT(PD04) | \
-                     PIN_MODE_INPUT(PD05) | \
-                     PIN_MODE_INPUT(PD06) | \
+                     PIN_MODE_ALTERNATE(PD05_KL_TX) | \
+                     PIN_MODE_ALTERNATE(PD06_KL_RX) | \
                      PIN_MODE_INPUT(PD07_SDIO_CD) | \
                      PIN_MODE_INPUT(PD08) | \
                      PIN_MODE_INPUT(PD09) | \
@@ -631,8 +631,8 @@
                      PIN_OTYPE_PUSHPULL(PD02_SDIO_CMD) | \
                      PIN_OTYPE_PUSHPULL(PD03) | \
                      PIN_OTYPE_PUSHPULL(PD04) | \
-                     PIN_OTYPE_PUSHPULL(PD05) | \
-                     PIN_OTYPE_PUSHPULL(PD06) | \
+                     PIN_OTYPE_PUSHPULL(PD05_KL_TX) | \
+                     PIN_OTYPE_OPENDRAIN(PD06_KL_RX) | \
                      PIN_OTYPE_PUSHPULL(PD07_SDIO_CD) | \
                      PIN_OTYPE_PUSHPULL(PD08) | \
                      PIN_OTYPE_PUSHPULL(PD09) | \
@@ -648,8 +648,8 @@
                      PIN_OSPEED_SPEED_HIGH(PD02_SDIO_CMD) | \
                      PIN_OSPEED_SPEED_VERYLOW(PD03) | \
                      PIN_OSPEED_SPEED_VERYLOW(PD04) | \
-                     PIN_OSPEED_SPEED_VERYLOW(PD05) | \
-                     PIN_OSPEED_SPEED_VERYLOW(PD06) | \
+                     PIN_OSPEED_SPEED_HIGH(PD05_KL_TX) | \
+                     PIN_OSPEED_SPEED_HIGH(PD06_KL_RX) | \
                      PIN_OSPEED_SPEED_VERYLOW(PD07_SDIO_CD) | \
                      PIN_OSPEED_SPEED_VERYLOW(PD08) | \
                      PIN_OSPEED_SPEED_VERYLOW(PD09) | \
@@ -665,8 +665,8 @@
                      PIN_PUPDR_PULLUP(PD02_SDIO_CMD) | \
                      PIN_PUPDR_PULLDOWN(PD03) | \
                      PIN_PUPDR_PULLDOWN(PD04) | \
-                     PIN_PUPDR_PULLDOWN(PD05) | \
-                     PIN_PUPDR_PULLDOWN(PD06) | \
+                     PIN_PUPDR_PULLUP(PD05_KL_TX) | \
+                     PIN_PUPDR_PULLUP(PD06_KL_RX) | \
                      PIN_PUPDR_PULLUP(PD07_SDIO_CD) | \
                      PIN_PUPDR_PULLDOWN(PD08) | \
                      PIN_PUPDR_PULLDOWN(PD09) | \
@@ -682,8 +682,8 @@
                      PIN_ODR_LEVEL_LOW(PD02_SDIO_CMD) | \
                      PIN_ODR_LEVEL_LOW(PD03) | \
                      PIN_ODR_LEVEL_LOW(PD04) | \
-                     PIN_ODR_LEVEL_LOW(PD05) | \
-                     PIN_ODR_LEVEL_LOW(PD06) | \
+                     PIN_ODR_LEVEL_HIGH(PD05_KL_TX) | \
+                     PIN_ODR_LEVEL_HIGH(PD06_KL_RX) | \
                      PIN_ODR_LEVEL_HIGH(PD07_SDIO_CD) | \
                      PIN_ODR_LEVEL_LOW(PD08) | \
                      PIN_ODR_LEVEL_LOW(PD09) | \
@@ -699,8 +699,8 @@
                      PIN_AFIO_AF(PD02_SDIO_CMD, 12) | \
                      PIN_AFIO_AF(PD03, 0) | \
                      PIN_AFIO_AF(PD04, 0) | \
-                     PIN_AFIO_AF(PD05, 0) | \
-                     PIN_AFIO_AF(PD06, 0) | \
+                     PIN_AFIO_AF(PD05_KL_TX, 7) | \
+                     PIN_AFIO_AF(PD06_KL_RX, 7) | \
                      PIN_AFIO_AF(PD07_SDIO_CD, 0))
 
 #define VAL_GPIOD_AFRH          (PIN_AFIO_AF(PD08, 0) | \
