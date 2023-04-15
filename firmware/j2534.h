@@ -9,6 +9,7 @@
 #define J2534_H_
 
 #include "utils.h"
+#include "canutils.h"
 #include "j2534def.h"
 
 #define FILTER_NBR 16
@@ -25,7 +26,7 @@ typedef struct {
   CANRamConfig* ramCfg;
   CAN_RamAddress* ramAdr;
   CAN_FILTER* canFilter;
-  bool (*cb)(CANRxFrame*, packet_t*);
+  bool (*cb)(void*, packet_t*);
   uint32_t protocol;
   uint32_t flags;
   uint32_t bitRate;
@@ -42,7 +43,12 @@ typedef struct {
   uint32_t swCanSpeedChangeEnable;
   uint32_t swCanResSwitch;
   bool loopback;
+  bool isConnected;
 } j2534_conn;
+
+typedef struct {
+
+} j2534_can_cfg;
 
 extern bool exec_cmd_j2534(packet_t *rx_packet, packet_t *tx_packet);
 

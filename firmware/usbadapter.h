@@ -21,9 +21,8 @@ extern uint8_t transferBuf[IN_PACKETSIZE*2];
 extern const USBConfig usb_config;
 extern const SerialUSBConfig serusbcfg1;
 extern SerialUSBDriver SDU1;
-extern void dataReceived(USBDriver *usbp, usbep_t ep);
 extern void usb_send(USBDriver *usbp, usbep_t ep, const uint8_t *buf, size_t n);
 extern bool start_receive(USBDriver *usbp, usbep_t ep, uint8_t *buf, size_t n);
-extern bool combiConfigureHookI(USBDriver *usbp);
-
+THD_FUNCTION(usbThd_rx, p);
+THD_FUNCTION(cmdThd, p);
 #endif

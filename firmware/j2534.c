@@ -15,7 +15,7 @@ CANRamConfig hscan_ram_cfg = {
   .MessageRAMOffset = 0,
   .StdFiltersNbr = FILTER_NBR,
   .ExtFiltersNbr = FILTER_NBR,
-  .RxFifo0ElmtsNbr = 8,
+  .RxFifo0ElmtsNbr = 32,
   .RxFifo0ElmtSize = FDCAN_DATA_BYTES_8,
   .RxFifo1ElmtsNbr = 8,
   .RxFifo1ElmtSize = FDCAN_DATA_BYTES_8,
@@ -60,21 +60,25 @@ static CAN_FILTER swCf = {.msgRam = &swcan_ram, .index = 0, .filter = {{0}}};
 static CAN_FILTER hsCf = {.msgRam = &hscan_ram, .index = 0, .filter = {{0}}};
 static uint8_t retBuff[64] = { 0 };
 
-bool rx_can_msg(CANRxFrame *rxmsg, packet_t *packet) {
+uint32_t clear_can_filters(j2534_conn* conn);
+
+bool rx_can_msg(void *rxmsg, packet_t *packet) {
+  CANRxFrame *msg = (CANRxFrame*) rxmsg;
   packet->cmd_code = cmd_j2534_read_message;
   uint16_t protocol = CAN;
   memcpy(packet->data, &protocol, 2);
-  memcpy(packet->data + 2, rxmsg, 8 + rxmsg->DLC);
-  packet->data_len = 10 + rxmsg->DLC;
+  memcpy(packet->data + 2, msg, 8 + msg->DLC);
+  packet->data_len = 10 + msg->DLC;
   return true;
 }
 
-bool rx_swcan_msg(CANRxFrame *rxmsg, packet_t *packet) {
+bool rx_swcan_msg(void *rxmsg, packet_t *packet) {
+  CANRxFrame *msg = (CANRxFrame*) rxmsg;
   packet->cmd_code = cmd_j2534_read_message;
   uint16_t protocol = SW_CAN_PS;
   memcpy(packet->data, &protocol, 2);
-  memcpy(packet->data + 2, rxmsg, 10 + rxmsg->DLC);
-  packet->data_len = 10 + rxmsg->DLC;
+  memcpy(packet->data + 2, msg, 10 + msg->DLC);
+  packet->data_len = 10 + msg->DLC;
   return true;
 }
 
@@ -94,6 +98,9 @@ j2534_conn connSw = {.canp = &CAND2,
                      .cb = rx_swcan_msg
 };
 
+j2534_conn connKL = { 0
+};
+
 j2534_conn* get_connection(uint32_t channel) {
   switch (channel) {
   case CAN:
@@ -102,12 +109,15 @@ j2534_conn* get_connection(uint32_t channel) {
     return &connHs;
   case SW_CAN_PS:
     return &connSw;
+  case ISO9141:
+  case ISO14230:
+    return &connKL;
   default:
     return NULL;
 }
 }
 
-uint32_t registerCanCallback(j2534_conn* conn) {
+uint32_t registerCallback(j2534_conn* conn) {
   switch (conn->protocol) {
     case CAN:
     case CAN_PS:
@@ -123,12 +133,31 @@ uint32_t registerCanCallback(j2534_conn* conn) {
   return STATUS_NOERROR;
 }
 
+uint32_t removeCallback(j2534_conn* conn) {
+  switch (conn->protocol) {
+    case CAN:
+    case CAN_PS:
+    case ISO15765:
+      registerHsCanCallback(NULL);
+      break;
+    case SW_CAN_PS:
+      registerSwCanCallback(NULL);
+      break;
+    default:
+      return ERR_INVALID_PROTOCOL_ID;
+  }
+  return STATUS_NOERROR;
+}
+
 uint32_t handle_connect(j2534_conn* conn, uint32_t protocol, uint32_t flags, uint32_t bitrate) {
   uint32_t err = ERR_NOT_SUPPORTED;
+  if (conn->isConnected) {
+    return STATUS_NOERROR;
+  }
   conn->protocol = protocol;
   conn->flags = flags;
   conn->bitRate = bitrate;
-  err = registerCanCallback(conn);
+  err = registerCallback(conn);
 
   if (err != STATUS_NOERROR) {
     return err;
@@ -140,7 +169,9 @@ uint32_t handle_connect(j2534_conn* conn, uint32_t protocol, uint32_t flags, uin
 
   canMemorryConfig(conn->canp, conn->canCfg, conn->ramCfg, conn->ramAdr);
   canGlobalFilter(conn->canCfg, FDCAN_REJECT, FDCAN_REJECT, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
+  clear_can_filters(conn);
   canStart(conn->canp, conn->canCfg);
+  conn->isConnected = true;
   return STATUS_NOERROR;
 }
 
@@ -155,7 +186,9 @@ bool j2534_connect(packet_t *rx_packet, packet_t *tx_packet) {
   memcpy(&bitrate, rx_packet->data + 8, 4);
 
   j2534_conn* conn = get_connection(protocolID);
-  error = handle_connect(conn, protocolID, flags, bitrate);
+  if (conn != NULL) {
+    error = handle_connect(conn, protocolID, flags, bitrate);
+  }
 
   memcpy(retBuff, &error, 4);
   memcpy(retBuff + 4, &protocolID, 4);
@@ -165,12 +198,9 @@ bool j2534_connect(packet_t *rx_packet, packet_t *tx_packet) {
 
 uint32_t handle_disconnect(j2534_conn* conn) {
   uint32_t err = ERR_NOT_SUPPORTED;
-  conn->cb = NULL;
-  err = registerCanCallback(conn);
-  if (err != STATUS_NOERROR) {
-    return err;
-  }
   canStop(conn->canp);
+  err = removeCallback(conn);
+  conn->isConnected = false;
   return err;
 }
 
@@ -238,8 +268,9 @@ bool j2534_start_filter(packet_t *rx_packet, packet_t *tx_packet) {
   memcpy(&channelID, rx_packet->data, 4);
   j2534_conn* conn = get_connection(channelID);
   error = handle_can_filter(conn, rx_packet->data);
+  uint8_t filterID = conn->canFilter->index - 1;
   memcpy(retBuff, &error, 4);
-  memcpy(retBuff+4, &conn->canFilter->index, 1);
+  memcpy(retBuff+4, &filterID, 1);
   return prepareReplyPacket(tx_packet, rx_packet, retBuff, size, cmd_term_ack);
 }
 

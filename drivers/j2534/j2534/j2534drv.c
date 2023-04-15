@@ -41,7 +41,9 @@ semaphore_t slock;
 static thread_t poll_thread;
 static uint32_t rx_counter=0;
 static uint32_t tx_counter=0;
+
 static void request_exit() {
+	int r;
 	do_exit = 1;
 	for (uint8_t i = 0; i < ASYNC_TRANSFERS; i++)
 		libusb_cancel_transfer(data_transfer[i]);
@@ -52,8 +54,10 @@ static void request_exit() {
 	semaphore_destroy(slock);
 	log_trace("poll thread shutting down");
 	thread_join(poll_thread);
-	if (handle)
-		libusb_release_interface(handle, 1);
+	if (handle) {
+		r = libusb_release_interface(handle, 1);
+		log_trace("libusb_release_interface: %s", libusb_error_name(r));
+	}
 	if (handle)
 		libusb_close(handle);
 	libusb_exit(NULL);
@@ -75,7 +79,7 @@ static void *poll_thread_main(void *arg)
 		r = libusb_handle_events_timeout(NULL, &tv);
 
 		if (r < 0) {
-			log_error("poll thread exit r: %d", r);
+			log_error("poll thread exit : %s", libusb_error_name(r));
 			request_exit();
 			break;
 		}
@@ -194,18 +198,16 @@ static int alloc_transfers(void) {
 }
 
 static int usb_send_packet(packet_t packet, unsigned int timeout) {
-	Lock(txSem, tx_counter);
 	int bytes_written = 0, r = LIBUSB_ERROR_OTHER;
 	uint8_t buff[128] ={0};
 	uint16_t len = covertPacketToBuffer(&packet, buff);
 	if (len > 0) {
+		sleep_us(100);
 		r = libusb_bulk_transfer(handle, WQCAN_USB_EP_OUT, buff, (int)len, &bytes_written, 0);
-		sleep_ms(3);
 	}
 	if (r != LIBUSB_SUCCESS) {
 		last_error("USB data transfer error sending %d bytes: %s", (int)len, libusb_error_name(r));
 	}
-	Unlock(txSem, tx_counter);
 	return r;
 }
 
@@ -213,11 +215,16 @@ static int usb_send_packet(packet_t packet, unsigned int timeout) {
  * Establish a connection with a PassThru device.
  */
 uint32_t PTAPI PassThruOpen(void *pName, uint32_t *pDeviceID) {
-	check_debug_log();
 	*pDeviceID = DEVICE_ID;
+	if (isOpen) {
+		log_trace("PassThruOpen: already opened");
+		return STATUS_NOERROR;
+	}
+	check_debug_log();
+
 	log_trace("PassThruOpen: Device Name: %s, ID: %lu", (char*)pName, *pDeviceID);
 	libusb_init(NULL);
-    //libusb_set_option(NULL, LIBUSB_OPTION_LOG_LEVEL, 4);
+    libusb_set_option(NULL, LIBUSB_OPTION_LOG_LEVEL, 4);
 
     //Open Device with VendorID and ProductID
 	handle = libusb_open_device_with_vid_pid(NULL, WQCAN_VENDOR_ID, WQCAN_PRODUCT_ID);
@@ -234,7 +241,7 @@ uint32_t PTAPI PassThruOpen(void *pName, uint32_t *pDeviceID) {
 	//Claim Interface 1 from the device
     r = libusb_claim_interface(handle, 1);
 	if (r < 0) {
-		last_error("usb_claim_interface error %d", r);
+		last_error("usb_claim_interface error %s", libusb_error_name(r));
 		libusb_close(handle);
 		libusb_exit(NULL);
 		return ERR_DEVICE_NOT_CONNECTED;
@@ -242,7 +249,7 @@ uint32_t PTAPI PassThruOpen(void *pName, uint32_t *pDeviceID) {
 
 	r = alloc_transfers();
 	if (r < 0) {
-		last_error("alloc_transfers error %d", r);
+		last_error("alloc_transfers error %s", libusb_error_name(r));
 		goto out_deinit;
 	}
 
@@ -267,7 +274,7 @@ uint32_t PTAPI PassThruOpen(void *pName, uint32_t *pDeviceID) {
 	for (uint8_t i = 0; i < ASYNC_TRANSFERS; i++) {
 		r = libusb_submit_transfer(data_transfer[i]);
 		if (r < 0) {
-			last_error("libusb_submit_transfer error %d", r);
+			last_error("libusb_submit_transfer error %s", libusb_error_name(r));
 			goto out_deinit;
 		}
 	}
@@ -397,7 +404,7 @@ uint32_t PTAPI PassThruReadMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t
 	}
 
 	uint32_t err = ERR_NOT_SUPPORTED;
-	uint32_t tm = Timeout*10;
+	uint32_t tm = Timeout*100;
 	if (Timeout > 0) {
 		bool exit = false;
 		for (uint32_t i = 0; (i < tm) & !do_exit & !exit; i++) {
@@ -411,7 +418,7 @@ uint32_t PTAPI PassThruReadMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t
 				exit = true;
 				break;
 			}
-		sleep_ms(1);
+		    sleep_us(10);
 		}
 
 		if (queueSize == 0) {
@@ -440,6 +447,7 @@ uint32_t PTAPI PassThruReadMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t
  * Write message(s) to a protocol channel.
  */
 uint32_t PTAPI PassThruWriteMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t *pNumMsgs, uint32_t Timeout) {
+	Lock(txSem, tx_counter);
 	log_trace("PassThruWriteMsgs: ChannelID: %lu, NumMsg: %lu, Timeout: %lu msec\r\n MSG: %s", ChannelID, *pNumMsgs, Timeout, parsemsg(pMsg));
 	if (!isOpen)
 		return ERR_INVALID_DEVICE_ID;
@@ -461,12 +469,13 @@ uint32_t PTAPI PassThruWriteMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_
 			case CAN:
 			case CAN_PS:
 			case SW_CAN_PS:
+			case ISO15765:
 				CANTxFrame tx = {0};
 				PASSTHRU_MSG_To_CANTxFrame(&pMsg[i], &tx);
 				memcpy(buff + offset, &tx, 8 + tx.DLC);
 				txPacket.data_len = offset + 8 + tx.DLC;
 				break;
-			case ISO15765:
+
 			default:
 				break;
 		}
@@ -484,6 +493,7 @@ uint32_t PTAPI PassThruWriteMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_
 	}
 
 	log_trace("PassThruWriteMsgs err: %s", translateError(err));
+	Unlock(txSem, tx_counter);
 	return err;
 }
 

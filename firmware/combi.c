@@ -10,7 +10,8 @@
 #include <stdio.h>
 #include "combi.h"
 #include "string.h"
-#include <utils.h>
+#include "utils.h"
+#include "canutils.h"
 
 uint8_t version[2] = {0x03, 0x01};
 uint8_t egt_temp[5] = {0};
@@ -75,7 +76,8 @@ static CANConfig canConfig1 = {
   .TEST =  0, //FDCAN_TEST_LBCK,
 };
 
-bool combi_rx_can_cb(CANRxFrame *rxmsg, packet_t *packet) {
+bool combi_rx_can_cb(void *msg, packet_t *packet) {
+  CANRxFrame *rxmsg = (CANRxFrame*) msg;
   if (rxmsg->common.XTD) {
     packet->data[0] = rxmsg->ext.EID & 0xFF;
     packet->data[1] = (rxmsg->ext.EID >> 8) & 0xFF;
@@ -102,8 +104,8 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
   case cmd_can_open:
     switch (rx_packet->data[0]) {
     case combi_close:
-      registerHsCanCallback(NULL);
       canStop(&CAND1);
+      registerHsCanCallback(NULL);
       break;
     case combi_open:
       registerHsCanCallback(&combi_rx_can_cb);
