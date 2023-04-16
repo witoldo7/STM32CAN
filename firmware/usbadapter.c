@@ -7,12 +7,27 @@
  */ 
 
 #include "usbadapter.h"
+#include "j2534.h"
+#include "combi.h"
+#include "socketcan.h"
+#include "bdmutility.h"
+#include <string.h>
 
 #define CHUNK_INTERVAL_FS 0x00 /* 0x19 - 25ms for packet of 10 data reads (USB 2.0 FS) */
 #define INT_PACKETSIZE  0x10
 #define CDC_PACKETSIZE  0x40
 #define EP_INT_CDC 1
 #define EP_CDC 3
+
+static semaphore_t rxSem;
+static semaphore_t processSem;
+
+uint8_t receiveBuf[OUT_PACKETSIZE*2];
+uint8_t transferBuf[IN_PACKETSIZE*2];
+
+static uint8_t rxdata[300], txdata[300];
+static packet_t rx_packet = {.data = rxdata};
+static packet_t tx_packet = {.data = txdata};
 
 /*
  * Virtual serial ports over USB.
@@ -21,13 +36,24 @@ SerialUSBDriver SDU1;
 
 volatile bool is_transmiting = false;
 void dataTransmitted(USBDriver *usbp, usbep_t ep);
+void dataReceived(USBDriver *usbp, usbep_t ep);
+bool combiConfigureHookI(USBDriver *usbp);
 
 static USBInEndpointState ep1instate;
-
 static USBInEndpointState ep2instate;
 static USBOutEndpointState ep2outstate;
 static USBInEndpointState ep3instate;
 static USBOutEndpointState ep3outstate;
+
+/*
+ * Serial over USB driver configuration 1.
+ */
+const SerialUSBConfig serusbcfg1 = {
+  &USBD1,
+  EP_CDC,
+  EP_CDC,
+  EP_INT_CDC
+};
 
 static const USBEndpointConfig ep1config = {
   USB_EP_MODE_TYPE_INTR,
@@ -321,7 +347,6 @@ static bool requests_hook(USBDriver *usbp) {
   return sduRequestsHook(usbp);
 }
 
-
 bool combiConfigureHookI(USBDriver *usbp) {
   if (usbGetDriverStateI(usbp) != USB_ACTIVE) {
     return true;
@@ -392,11 +417,107 @@ bool start_receive(USBDriver *usbp, usbep_t ep, uint8_t *buf, size_t n) {
 }
 
 /*
- * Serial over USB driver configuration 1.
+ * data Received Callback
  */
-const SerialUSBConfig serusbcfg1 = {
-  &USBD1,
-  EP_CDC,
-  EP_CDC,
-  EP_INT_CDC
-};
+void dataReceived(USBDriver *usbp, usbep_t ep) {
+  (void)usbp;
+  (void)ep;
+  chSysLockFromISR();
+  chSemSignalI(&rxSem);
+  chSysUnlockFromISR();
+}
+
+THD_FUNCTION(usbThd_rx, arg) {
+  (void)arg;
+  chRegSetThreadName("usbReceiver");
+  chSemObjectInit(&rxSem, 1);
+  chSemObjectInit(&processSem, 1);
+  bool is_completed = true;
+  uint16_t cur_pos = 0;
+  uint16_t len = 0;
+  while (TRUE) {
+    chSemWait(&rxSem);
+    while (!(((USBDriver*)&USBD1)->state == USB_ACTIVE)) {
+      __asm("nop");
+    }
+    if (*(receiveBuf) == 0) {
+      continue;
+    }
+    uint8_t rec_size = ((USBDriver*)&USBD1)->epc[EP_OUT]->out_state->rxcnt;
+    if (is_completed) {
+      rx_packet.cmd_code = receiveBuf[0];
+      len = (uint16_t)((receiveBuf[1] & 0xffffU) << 8) | (uint16_t)receiveBuf[2];
+      if (len > 255) {
+        continue;
+      }
+      rx_packet.data_len = len;
+      memcpy(rx_packet.data, receiveBuf + 3, rec_size);
+      cur_pos += rec_size;
+      if ((len + 3) > cur_pos) {
+        is_completed = false;
+      } else {
+        rx_packet.term = receiveBuf[rec_size-1];
+        osalSysLock();
+        chSemSignalI(&processSem);
+        osalSysUnlock();
+        cur_pos = 0;
+        len = 0;
+        is_completed = true;
+      }
+    } else {
+      if ((cur_pos + rec_size) >= len + 3) {
+        memcpy(rx_packet.data + cur_pos, receiveBuf, rec_size - 1);
+        rx_packet.term = receiveBuf[rec_size-1];
+        osalSysLock();
+        chSemSignalI(&processSem);
+        osalSysUnlock();
+        cur_pos = 0;
+        len = 0;
+        is_completed = true;
+      } else {
+        memcpy(rx_packet.data + cur_pos, receiveBuf, rec_size);
+        cur_pos += rec_size;
+      }
+    }
+    start_receive(&USBD1, EP_OUT, receiveBuf, IN_PACKETSIZE*2);
+  }
+}
+
+THD_FUNCTION(cmdThd, arg) {
+  (void)arg;
+  bool ret = false;
+  uint8_t size = 0;
+  chRegSetThreadName("command processor");
+  while (TRUE) {
+    chSemWait(&processSem);
+    if (rx_packet.term == cmd_term_ack) {
+      switch (rx_packet.cmd_code & 0xe0) {
+      case 0x20: //Board utility.
+        ret = exec_cmd_board(&rx_packet, &tx_packet);
+        break;
+      case 0x40: //BDM utility.
+        ret = exec_cmd_bdm(&rx_packet, &tx_packet);
+        break;
+      case 0x60: //SocketCAN utility.
+        ret = exec_cmd_socketcan(&rx_packet, &tx_packet);
+        break;
+      case 0x80:  //CAN utility.
+        ret = exec_cmd_can(&rx_packet, &tx_packet);
+        break;
+      case 0xA0:  //J2534 utility.
+        ret = exec_cmd_j2534(&rx_packet, &tx_packet);
+        break;
+        break;
+      default:
+        continue;
+      }
+      if (ret != true) {
+        prepareReplyPacket(&tx_packet, &rx_packet, 0, 0, cmd_term_nack);
+      }
+
+      size = covertPacketToBuffer(&tx_packet, transferBuf);
+      usb_send(&USBD1, EP_IN, transferBuf, size);
+    }
+  }
+}
+

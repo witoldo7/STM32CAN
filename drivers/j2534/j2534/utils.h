@@ -157,7 +157,7 @@ void UnlockRx();
 void LockRx();
 void Lock(semaphore_t sem, uint32_t counter);
 void Unlock(semaphore_t sem, uint32_t counter);
-void sleep_ms(int milliseconds);
+void sleep_us(int usec);
 void enQueue(PASSTHRU_MSG msg);
 bool deQueue(PASSTHRU_MSG* msg);
 void clearQueue(void);

@@ -23,13 +23,21 @@
 #include <unistd.h> // for usleep
 #endif
 
-void sleep_ms(int milliseconds) {
+void sleep_us(int usec) {
 #ifdef _MSC_VER
-    Sleep(milliseconds);
+	HANDLE timer;
+	LARGE_INTEGER ft;
+
+	ft.QuadPart = -(10 * (__int64)usec);
+
+	timer = CreateWaitableTimer(NULL, TRUE, NULL);
+	SetWaitableTimer(timer, &ft, 0, NULL, NULL, 0);
+	WaitForSingleObject(timer, INFINITE);
+	CloseHandle(timer);
 #elif _POSIX_C_SOURCE >= 199309L
     struct timespec ts;
-    ts.tv_sec =0;// milliseconds / 1000;
-    ts.tv_nsec = 100000;// milliseconds* 1000;//1000000;
+    ts.tv_sec = 0;// milliseconds / 1000;
+    ts.tv_nsec = 1000 * usec;// milliseconds* 1000;//1000000;
     nanosleep(&ts, NULL);
 #else
     if (milliseconds >= 1000)

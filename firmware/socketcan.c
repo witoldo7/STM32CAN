@@ -9,6 +9,7 @@
 #include "hal.h"
 #include "string.h"
 #include "utils.h"
+#include "canutils.h"
 
 CAN_RamAddress ram1, ram2;
 
@@ -70,7 +71,8 @@ static CANConfig canConfig2 = {
  * data[8] - DLC
  * data[9:9+DLC] - data
  */
-bool socketcan_rx_can_cb(CANRxFrame *rxmsg, packet_t *packet) {
+bool socketcan_rx_can_cb(void *msg, packet_t *packet) {
+  CANRxFrame *rxmsg = (CANRxFrame*) msg;
   if (rxmsg->common.XTD) {
     packet->data[0] = rxmsg->ext.EID & 0xFF;
     packet->data[1] = (rxmsg->ext.EID >> 8) & 0xFF;
@@ -93,7 +95,8 @@ bool socketcan_rx_can_cb(CANRxFrame *rxmsg, packet_t *packet) {
   return true;
 }
 
-bool socketcan_rx_swcan_cb(CANRxFrame *rxmsg, packet_t *packet) {
+bool socketcan_rx_swcan_cb(void *msg, packet_t *packet) {
+  CANRxFrame *rxmsg = (CANRxFrame*) msg;
   if (rxmsg->common.XTD) {
     packet->data[0] = rxmsg->ext.EID & 0xFF;
     packet->data[1] = (rxmsg->ext.EID >> 8) & 0xFF;
@@ -197,7 +200,6 @@ bool socketcan_connectSw(packet_t *rx_packet, packet_t *tx_packet) {
 }
 
 bool socketcan_txFrameHs(packet_t *rx_packet, packet_t *tx_packet) {
-  registerHsCanCallback(&socketcan_rx_can_cb);
   uint8_t flags = rx_packet->data[4];
   CANTxFrame txmsg = {};
   if (flags & 0b00000001) {
