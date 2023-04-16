@@ -8,97 +8,76 @@
 #include <string.h>
 #include "hal.h"
 #include "j2534.h"
+#include "j2534can.h"
+#include "j2534kline.h"
 
-CAN_RamAddress hscan_ram, swcan_ram;
+uint32_t handle_connect_default(void* conn) {(void)conn; return ERR_NOT_SUPPORTED;}
+uint32_t handle_disconnect_default(void* conn) {(void)conn; return ERR_NOT_SUPPORTED;}
+uint32_t start_filter_default(void* conn, uint8_t* data, uint32_t* idx) {(void)conn; (void)data; (void)idx; return ERR_NOT_SUPPORTED;}
+uint32_t stop_filter_default(void* conn, uint32_t idx) {(void)conn; (void)idx; return ERR_NOT_SUPPORTED;}
+uint32_t write_message_default(void* conn, uint32_t timeout, uint16_t len, uint8_t* data) {
+  (void)conn; (void)timeout; (void)len; (void)data; return ERR_NOT_SUPPORTED;}
+uint32_t start_periodic_default_msg(void* conn, uint8_t data) {(void)conn; (void)data; return ERR_NOT_SUPPORTED;}
+uint32_t stop_periodic_default_msg(void* conn, uint32_t msg) {(void)conn; (void)msg; return ERR_NOT_SUPPORTED;}
+uint32_t ioctl_clear_filters_default(void* conn) {(void)conn; return ERR_NOT_SUPPORTED;}
+uint32_t ioctl_datarate_default(void* conn) {(void)conn; return ERR_NOT_SUPPORTED;}
+uint32_t ioctl_loopback_default(void* conn) {(void)conn; return ERR_NOT_SUPPORTED;}
+uint32_t ioctl_fast_init_default(void* conn) {(void)conn; return ERR_NOT_SUPPORTED;}
+uint32_t ioctl_five_baud_init_default(void* conn) {(void)conn; return ERR_NOT_SUPPORTED;}
 
-CANRamConfig hscan_ram_cfg = {
-  .MessageRAMOffset = 0,
-  .StdFiltersNbr = FILTER_NBR,
-  .ExtFiltersNbr = FILTER_NBR,
-  .RxFifo0ElmtsNbr = 32,
-  .RxFifo0ElmtSize = FDCAN_DATA_BYTES_8,
-  .RxFifo1ElmtsNbr = 8,
-  .RxFifo1ElmtSize = FDCAN_DATA_BYTES_8,
-  .RxBuffersNbr = 8,
-  .RxBufferSize = FDCAN_DATA_BYTES_8,
-  .TxEventsNbr = 1,
-  .TxBuffersNbr = 1,
-  .TxFifoQueueElmtsNbr = 1,
-  .TxElmtSize = FDCAN_DATA_BYTES_8
-};
-
-CANRamConfig swcan_ram_cfg = {
-   //fixme
-  .MessageRAMOffset = 0,
-  .StdFiltersNbr = FILTER_NBR,
-  .ExtFiltersNbr = FILTER_NBR,
-  .RxFifo0ElmtsNbr = 2,
-  .RxFifo0ElmtSize = FDCAN_DATA_BYTES_8,
-  .RxFifo1ElmtsNbr = 2,
-  .RxFifo1ElmtSize = FDCAN_DATA_BYTES_8,
-  .RxBuffersNbr = 2,
-  .RxBufferSize = FDCAN_DATA_BYTES_8,
-  .TxEventsNbr = 1,
-  .TxBuffersNbr = 1,
-  .TxFifoQueueElmtsNbr = 1,
-  .TxElmtSize = FDCAN_DATA_BYTES_8
-};
-
-static CANConfig hsCanConfig = {
-  .DBTP =  0,
-  .CCCR =  0, //FDCAN_CCCR_TEST,
-  .TEST =  0, //FDCAN_TEST_LBCK,
-};
-
-static CANConfig swCanConfig = {
-  .DBTP = 0,
-  .CCCR =  0, //FDCAN_CCCR_TEST,
-  .TEST =  0, //FDCAN_TEST_LBCK,
-};
-
-static CAN_FILTER swCf = {.msgRam = &swcan_ram, .index = 0, .filter = {{0}}};
-static CAN_FILTER hsCf = {.msgRam = &hscan_ram, .index = 0, .filter = {{0}}};
 static uint8_t retBuff[64] = { 0 };
+j2534_protocol_cfg hscan_pcfg = { 0 }, swcan_pcfg = { 0 }, kline_pcfg = { 0 }, default_pcfg = { 0 };
 
-uint32_t clear_can_filters(j2534_conn* conn);
-
-bool rx_can_msg(void *rxmsg, packet_t *packet) {
-  CANRxFrame *msg = (CANRxFrame*) rxmsg;
-  packet->cmd_code = cmd_j2534_read_message;
-  uint16_t protocol = CAN;
-  memcpy(packet->data, &protocol, 2);
-  memcpy(packet->data + 2, msg, 8 + msg->DLC);
-  packet->data_len = 10 + msg->DLC;
-  return true;
-}
-
-bool rx_swcan_msg(void *rxmsg, packet_t *packet) {
-  CANRxFrame *msg = (CANRxFrame*) rxmsg;
-  packet->cmd_code = cmd_j2534_read_message;
-  uint16_t protocol = SW_CAN_PS;
-  memcpy(packet->data, &protocol, 2);
-  memcpy(packet->data + 2, msg, 10 + msg->DLC);
-  packet->data_len = 10 + msg->DLC;
-  return true;
-}
-
-j2534_conn connHs = {.canp = &CAND1,
-                     .canCfg = &hsCanConfig,
-                     .canFilter = &hsCf,
-                     .ramCfg = &hscan_ram_cfg,
-                     .ramAdr = &hscan_ram,
-                     .cb = rx_can_msg
+j2534_conn connHs = {.connect = (void*)&handle_connect_can,
+                     .disconnect = (void*)&handle_disconnect_can,
+                     .write = (void*)&write_message_can,
+                     .start_filter = (void*)&start_filter_can,
+                     .stop_filter = (void*)&stop_filter_can,
+                     .ioctl_lopback = (void*)ioctl_loopback_can,
+                     .ioctl_datarate = (void*)ioctl_datarate_can,
+                     .ioctl_clear_filters = (void*)ioctl_clear_filters_can,
+                     .ioctl_fast_init = (void*)&ioctl_fast_init_default,
+                     .ioctl_five_baud_init = (void*)&ioctl_five_baud_init_default,
+                     .pcfg = &hscan_pcfg
 };
 
-j2534_conn connSw = {.canp = &CAND2,
-                     .canCfg = &swCanConfig,
-                     .canFilter = &swCf,
-                     .ramCfg = &swcan_ram_cfg,
-                     .ramAdr = &swcan_ram,
-                     .cb = rx_swcan_msg
+j2534_conn connSw = {.connect = (void*)&handle_connect_can,
+                     .disconnect = (void*)&handle_disconnect_can,
+                     .write = (void*)&write_message_can,
+                     .start_filter = (void*)&start_filter_can,
+                     .stop_filter = (void*)&stop_filter_can,
+                     .ioctl_lopback = (void*)ioctl_loopback_can,
+                     .ioctl_datarate = (void*)ioctl_datarate_can,
+                     .ioctl_clear_filters = (void*)ioctl_clear_filters_can,
+                     .ioctl_fast_init = (void*)&ioctl_fast_init_default,
+                     .ioctl_five_baud_init = (void*)&ioctl_five_baud_init_default,
+                     .pcfg = &swcan_pcfg
 };
 
-j2534_conn connKL = { 0
+j2534_conn connKL = {.connect = (void*)&handle_connect_kline,
+                     .disconnect = (void*)&handle_disconnect_kline,
+                     .write = (void*)&write_message_kline,
+                     .start_filter = (void*)&start_filter_kline,
+                     .stop_filter = (void*)&stop_filter_kline,
+                     .ioctl_lopback = (void*)ioctl_loopback_kline,
+                     .ioctl_datarate = (void*)ioctl_datarate_kline,
+                     .ioctl_clear_filters = (void*)&ioctl_clear_filters_kline,
+                     .ioctl_fast_init = (void*)&ioctl_fast_init_kline,
+                     .ioctl_five_baud_init = (void*)&ioctl_five_baud_init_kline,
+                     .pcfg = &kline_pcfg
+};
+
+j2534_conn conDefault = {.connect = (void*)&handle_connect_default,
+                         .disconnect = (void*)&handle_disconnect_default,
+                         .write = (void*)&write_message_default,
+                         .start_filter = (void*)&start_filter_default,
+                         .stop_filter = (void*)&stop_filter_default,
+                         .ioctl_lopback = (void*)ioctl_loopback_default,
+                         .ioctl_datarate = (void*)ioctl_datarate_default,
+                         .ioctl_clear_filters = (void*)ioctl_clear_filters_default,
+                         .ioctl_fast_init = (void*)&ioctl_fast_init_default,
+                         .ioctl_five_baud_init = (void*)&ioctl_five_baud_init_default,
+                         .pcfg = &default_pcfg
 };
 
 j2534_conn* get_connection(uint32_t channel) {
@@ -113,219 +92,236 @@ j2534_conn* get_connection(uint32_t channel) {
   case ISO14230:
     return &connKL;
   default:
-    return NULL;
-}
-}
-
-uint32_t registerCallback(j2534_conn* conn) {
-  switch (conn->protocol) {
-    case CAN:
-    case CAN_PS:
-    case ISO15765:
-      registerHsCanCallback(conn->cb);
-      break;
-    case SW_CAN_PS:
-      registerSwCanCallback(conn->cb);
-      break;
-    default:
-      return ERR_INVALID_PROTOCOL_ID;
+    return &conDefault;
   }
-  return STATUS_NOERROR;
-}
-
-uint32_t removeCallback(j2534_conn* conn) {
-  switch (conn->protocol) {
-    case CAN:
-    case CAN_PS:
-    case ISO15765:
-      registerHsCanCallback(NULL);
-      break;
-    case SW_CAN_PS:
-      registerSwCanCallback(NULL);
-      break;
-    default:
-      return ERR_INVALID_PROTOCOL_ID;
-  }
-  return STATUS_NOERROR;
-}
-
-uint32_t handle_connect(j2534_conn* conn, uint32_t protocol, uint32_t flags, uint32_t bitrate) {
-  uint32_t err = ERR_NOT_SUPPORTED;
-  if (conn->isConnected) {
-    return STATUS_NOERROR;
-  }
-  conn->protocol = protocol;
-  conn->flags = flags;
-  conn->bitRate = bitrate;
-  err = registerCallback(conn);
-
-  if (err != STATUS_NOERROR) {
-    return err;
-  }
-
-  if (!canBaudRate(conn->canCfg, conn->bitRate, &conn->syncJumpWidth, &conn->bitSamplePoint)) {
-    return ERR_INVALID_BAUDRATE;
-  }
-
-  canMemorryConfig(conn->canp, conn->canCfg, conn->ramCfg, conn->ramAdr);
-  canGlobalFilter(conn->canCfg, FDCAN_REJECT, FDCAN_REJECT, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
-  clear_can_filters(conn);
-  canStart(conn->canp, conn->canCfg);
-  conn->isConnected = true;
-  return STATUS_NOERROR;
 }
 
 bool j2534_connect(packet_t *rx_packet, packet_t *tx_packet) {
-  uint32_t protocolID, flags, bitrate, error = ERR_NOT_SUPPORTED;
+  uint32_t protocolID, flags, bitrate, err = ERR_NOT_SUPPORTED;
   if(rx_packet->data_len != 12) {
-    memcpy(retBuff, &error, 4);
-    return prepareReplyPacket(tx_packet, rx_packet, retBuff, 8, cmd_term_ack);
+    goto error;
   }
   memcpy(&protocolID, rx_packet->data, 4);
   memcpy(&flags, rx_packet->data + 4, 4);
   memcpy(&bitrate, rx_packet->data + 8, 4);
 
   j2534_conn* conn = get_connection(protocolID);
-  if (conn != NULL) {
-    error = handle_connect(conn, protocolID, flags, bitrate);
-  }
+  conn->pcfg->protocol = protocolID;
+  conn->pcfg->flags = flags;
+  conn->pcfg->DataRate = bitrate;
 
-  memcpy(retBuff, &error, 4);
+  err = conn->connect(conn);
+  conn->isConnected = true;
+  memcpy(retBuff, &err, 4);
   memcpy(retBuff + 4, &protocolID, 4);
-
   return prepareReplyPacket(tx_packet, rx_packet, retBuff, 8, cmd_term_ack);
-}
 
-uint32_t handle_disconnect(j2534_conn* conn) {
-  uint32_t err = ERR_NOT_SUPPORTED;
-  canStop(conn->canp);
-  err = removeCallback(conn);
-  conn->isConnected = false;
-  return err;
+  error:
+    memcpy(retBuff, &err, 4);
+    return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_term_ack);
 }
 
 bool j2534_disconnect(packet_t *rx_packet, packet_t *tx_packet) {
-  uint32_t channelID, error = ERR_NOT_SUPPORTED;
+  uint32_t channelID, err = ERR_NOT_SUPPORTED;
   if(rx_packet->data_len != 4) {
-    memcpy(retBuff, &error, 4);
-    return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_term_ack);
+    goto error;
   }
   memcpy(&channelID, rx_packet->data, 4);
 
   j2534_conn* conn = get_connection(channelID);
-  error = handle_disconnect(conn);
-  memcpy(retBuff, &error, 4);
-
+  err = conn->disconnect(conn);
+  memcpy(retBuff, &err, 4);
   return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_term_ack);
-}
 
-uint32_t handle_can_filter(j2534_conn* conn, uint8_t* data) {
-  CAN_FILTER *cf = conn->canFilter;
-  uint32_t flags;
-  uint32_t pattern, mask;
-  uint8_t size = data[11], type = data[10];
-  memcpy(&flags, data + 4, 4);
-  memcpy(&mask, data + 12, size);
-  memcpy(&pattern, data + 24, size);
-  (void)type;
-  if (cf->index >= FILTER_NBR)
-    return ERR_EXCEEDED_LIMIT;
-
-  cf->filter[cf->index].IdType = (flags & CAN_29BIT_ID) ? FDCAN_EXTENDED_ID : FDCAN_STANDARD_ID;
-  cf->filter[cf->index].FilterIndex = cf->index;
-  cf->filter[cf->index].FilterType = FDCAN_FILTER_MASK;
-  cf->filter[cf->index].FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
-  cf->filter[cf->index].FilterID1 = pattern;
-  cf->filter[cf->index].FilterID2 = mask;
-
-  canFilter(cf->msgRam, &cf->filter[cf->index]);
-  cf->index++;
-  return STATUS_NOERROR;
-}
-
-uint32_t clear_can_filters(j2534_conn* conn) {
-  CAN_FILTER *cf = conn->canFilter;
-  memset(cf->filter, 0, FILTER_NBR-1);
-  for(uint8_t i = 0; i < FILTER_NBR; i++) {
-    cf->filter[i].FilterIndex = i;
-    canFilter(cf->msgRam, &cf->filter[i]);
-  }
-  cf->index = 0;
-  return STATUS_NOERROR;
-}
-
-uint32_t clear_can_filter(j2534_conn* conn, uint8_t idx) {
-  CAN_FILTER *cf = conn->canFilter;
-  memset(&cf->filter[idx], 0, sizeof(CAN_Filter));
-  cf->filter[idx].FilterIndex = idx;
-  canFilter(cf->msgRam, &cf->filter[idx]);
-  return STATUS_NOERROR;
+  error:
+    memcpy(retBuff, &err, 4);
+    return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_term_ack);
 }
 
 bool j2534_start_filter(packet_t *rx_packet, packet_t *tx_packet) {
-  uint32_t channelID, error = ERR_NOT_SUPPORTED;
+  uint32_t channelID, err = ERR_NOT_SUPPORTED;
+  if(rx_packet->data_len < 4) {
+    goto error;
+  }
   uint8_t size = 5;
   memcpy(&channelID, rx_packet->data, 4);
   j2534_conn* conn = get_connection(channelID);
-  error = handle_can_filter(conn, rx_packet->data);
-  uint8_t filterID = conn->canFilter->index - 1;
-  memcpy(retBuff, &error, 4);
+  uint32_t filterID = 0;
+  err = conn->start_filter(conn, rx_packet->data, &filterID);
+  if (err != STATUS_NOERROR) {
+    goto error;
+  }
+
+  memcpy(retBuff, &err, 4);
   memcpy(retBuff+4, &filterID, 1);
   return prepareReplyPacket(tx_packet, rx_packet, retBuff, size, cmd_term_ack);
+
+  error:
+    memcpy(retBuff, &err, 4);
+    return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_term_ack);
 }
 
 bool j2534_stop_filter(packet_t *rx_packet, packet_t *tx_packet) {
-  uint32_t channelID, filterID, error = ERR_NOT_SUPPORTED;
+  uint32_t channelID, filterID, err = ERR_NOT_SUPPORTED;
+  if(rx_packet->data_len < 8) {
+    goto error;
+  }
   uint8_t size = 4;
   memcpy(&channelID, rx_packet->data, 4);
   memcpy(&filterID, rx_packet->data+4, 4);
   j2534_conn* conn = get_connection(channelID);
-  error = clear_can_filter(conn, filterID);
-  memcpy(retBuff, &error, 4);
+  err = conn->stop_filter(conn, filterID);
+  memcpy(retBuff, &err, 4);
   return prepareReplyPacket(tx_packet, rx_packet, retBuff, size, cmd_term_ack);
+
+  error:
+    memcpy(retBuff, &err, 4);
+    return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_term_ack);
 }
 
 uint32_t handldle_get_config(j2534_conn* conn, SCONFIG_LIST* cfgList) {
   uint32_t err = ERR_NOT_SUPPORTED;
+  j2534_protocol_cfg *pcfg = conn->pcfg;
   for (uint8_t i = 0; i < cfgList->NumOfParams; i++) {
     SCONFIG *cfg = &cfgList->ConfigPtr[i];
     switch (cfg->Parameter) {
     case DATA_RATE:
-      cfg->Value = conn->bitRate;
+      cfg->Value = pcfg->DataRate;
       err = STATUS_NOERROR;
       break;
     case LOOPBACK:
-      cfg->Value = conn->loopback;
+      cfg->Value = pcfg->Loopback;
       err = STATUS_NOERROR;
       break;
     case BIT_SAMPLE_POINT:
-      cfg->Value = conn->bitSamplePoint;
+      cfg->Value = pcfg->BitSamplePoint;
       err = STATUS_NOERROR;
       break;
     case SYNC_JUMP_WIDTH:
-      cfg->Value = conn->syncJumpWidth;
+      cfg->Value = pcfg->SyncJumpWidth;
       err = STATUS_NOERROR;
       break;
     case CAN_MIXED_FORMAT:
-      cfg->Value = conn->canMixedFormat;
+      cfg->Value = pcfg->CanMixedFormat;
       err = STATUS_NOERROR;
       break;
     case J1962_PINS:
-      cfg->Value = conn->J1962Pins;
+      cfg->Value = pcfg->J1962Pins;
       err = STATUS_NOERROR;
       break;
     case SW_CAN_HS_DATA_RATE:
-      cfg->Value = conn->swCanHsDataRate;
+      cfg->Value = pcfg->SwCanHsDataRate;
       err = STATUS_NOERROR;
       break;
     case SW_CAN_SPEEDCHANGE_ENABLE:
-      cfg->Value = conn->swCanSpeedChangeEnable;
+      cfg->Value = pcfg->SwCanSpeedchangeEnable;
       err = STATUS_NOERROR;
       break;
     case SW_CAN_RES_SWITCH:
-      cfg->Value = conn->swCanResSwitch;
+      cfg->Value = pcfg->SwCanResSwitch;
       err = STATUS_NOERROR;
       break;
+    case ISO15765_STMIN:
+      cfg->Value = pcfg->Iso15765Stmin;
+      err = STATUS_NOERROR;
+      break;
+    case ISO15765_BS:
+      cfg->Value = pcfg->Iso15765Bs;
+      err = STATUS_NOERROR;
+      break;
+    case ISO15765_STMIN_TX:
+      cfg->Value = pcfg->Iso15765StminTx;
+      err = STATUS_NOERROR;
+      break;
+    case ISO15765_BS_TX:
+      cfg->Value = pcfg->Iso15765BsTx;
+      err = STATUS_NOERROR;
+      break;
+    case ISO15765_WFT_MAX:
+      cfg->Value = pcfg->Iso15765WftMax;
+      err = STATUS_NOERROR;
+      break;
+    // ISO9141 or ISO14230
+    case P1_MIN:
+      cfg->Value = pcfg->P1Min;
+      err = STATUS_NOERROR;
+      break;
+    case P1_MAX:
+      cfg->Value = pcfg->P1Max;
+      err = STATUS_NOERROR;
+      break;
+    case P2_MIN:
+      cfg->Value = pcfg->P2Min;
+      err = STATUS_NOERROR;
+      break;
+    case P2_MAX:
+      cfg->Value = pcfg->P2Max;
+      err = STATUS_NOERROR;
+      break;
+    case P3_MIN:
+      cfg->Value = pcfg->P3Min;
+      err = STATUS_NOERROR;
+      break;
+    case P3_MAX:
+      cfg->Value = pcfg->P3Max;
+      err = STATUS_NOERROR;
+      break;
+    case P4_MIN:
+      cfg->Value = pcfg->P4Min;
+      err = STATUS_NOERROR;
+      break;
+    case P4_MAX:
+      cfg->Value = pcfg->P4Max;
+      err = STATUS_NOERROR;
+      break;
+    case W0:
+      cfg->Value = pcfg->W0a;
+      err = STATUS_NOERROR;
+      break;
+    case W1:
+      cfg->Value = pcfg->W1a;
+      err = STATUS_NOERROR;
+      break;
+    case W2:
+      cfg->Value = pcfg->W2a;
+      err = STATUS_NOERROR;
+      break;
+    case W3:
+      cfg->Value = pcfg->W3a;
+      err = STATUS_NOERROR;
+      break;
+    case W4:
+      cfg->Value = pcfg->W4a;
+      err = STATUS_NOERROR;
+      break;
+    case W5:
+      cfg->Value = pcfg->W5a;
+      err = STATUS_NOERROR;
+      break;
+    case TIDLE:
+      cfg->Value = pcfg->Tidle;
+      err = STATUS_NOERROR;
+      break;
+    case TINIL:
+      cfg->Value = pcfg->Tinil;
+      err = STATUS_NOERROR;
+      break;
+    case TWUP:
+      cfg->Value = pcfg->Twup;
+      err = STATUS_NOERROR;
+      break;
+    case PARITY:
+      cfg->Value = pcfg->Parity;
+      err = STATUS_NOERROR;
+      break;
+    case DATA_BITS:
+      cfg->Value = pcfg->DataBits;
+      err = STATUS_NOERROR;
+      break;
+    case FIVE_BAUD_MOD:
+      cfg->Value = pcfg->FiveBaudMod;
+      err = STATUS_NOERROR;
+    break;
     default:
       break;
     }
@@ -335,73 +331,139 @@ uint32_t handldle_get_config(j2534_conn* conn, SCONFIG_LIST* cfgList) {
 
 uint32_t handldle_set_config(j2534_conn* conn, SCONFIG_LIST* cfgList) {
   uint32_t err = ERR_NOT_SUPPORTED;
+  j2534_protocol_cfg *pcfg = conn->pcfg;
   for (uint8_t i = 0; i < cfgList->NumOfParams; i++) {
     SCONFIG *cfg = &cfgList->ConfigPtr[i];
     switch (cfg->Parameter) {
     case DATA_RATE:
-      conn->bitRate = cfg->Value;
-      canStop(conn->canp);
-      if (!canBaudRate(conn->canCfg, conn->bitRate, &conn->syncJumpWidth, &conn->bitSamplePoint)) {
-        return ERR_INVALID_BAUDRATE;
-      }
-      canStart(conn->canp, conn->canCfg);
-      err = STATUS_NOERROR;
+      conn->pcfg->DataRate = cfg->Value;
+      err = conn->ioctl_datarate(conn);
      break;
     case LOOPBACK:
-      conn->loopback = cfg->Value == 1;
-      if (conn->loopback) {
-        canStop(conn->canp);
-        conn->canCfg->CCCR |= FDCAN_CCCR_TEST | FDCAN_CCCR_MON;
-        conn->canCfg->TEST |= FDCAN_TEST_LBCK;
-        canStart(conn->canp, conn->canCfg);
-      } else {
-        canStop(conn->canp);
-        conn->canCfg->CCCR &= ~FDCAN_CCCR_TEST | ~FDCAN_CCCR_MON;
-        conn->canCfg->TEST &= ~FDCAN_TEST_LBCK;
-        canStart(conn->canp, conn->canCfg);
-      }
-      err = STATUS_NOERROR;
+      pcfg->Loopback = cfg->Value;
+      err = conn->ioctl_lopback(conn);
       break;
     case CAN_MIXED_FORMAT:
-      conn->canMixedFormat = cfg->Value;
+      pcfg->CanMixedFormat = cfg->Value;
       err = STATUS_NOERROR;
       break;
     case J1962_PINS:
-      conn->J1962Pins = cfg->Value;
+      pcfg->J1962Pins = cfg->Value;
       err = STATUS_NOERROR;
       break;
     case SW_CAN_HS_DATA_RATE:
-      conn->swCanHsDataRate = cfg->Value;
+      pcfg->SwCanHsDataRate = cfg->Value;
       err = STATUS_NOERROR;
       break;
     case SW_CAN_SPEEDCHANGE_ENABLE:
-      conn->swCanSpeedChangeEnable = cfg->Value;
+      pcfg->SwCanSpeedchangeEnable = cfg->Value;
       err = STATUS_NOERROR;
       break;
     case SW_CAN_RES_SWITCH:
-      conn->swCanResSwitch = cfg->Value;
+      pcfg->SwCanResSwitch = cfg->Value;
       err = STATUS_NOERROR;
       break;
     case ISO15765_STMIN:
-      conn->iso15766stmin = cfg->Value;
+      pcfg->Iso15765Stmin = cfg->Value;
       err = STATUS_NOERROR;
       break;
     case ISO15765_BS:
-      conn->iso15766bs = cfg->Value;
+      pcfg->Iso15765Bs = cfg->Value;
       err = STATUS_NOERROR;
       break;
     case ISO15765_STMIN_TX:
-      conn->iso15766stminTx = cfg->Value;
+      pcfg->Iso15765StminTx = cfg->Value;
       err = STATUS_NOERROR;
       break;
     case ISO15765_BS_TX:
-      conn->iso15766bsTx = cfg->Value;
+      pcfg->Iso15765BsTx = cfg->Value;
       err = STATUS_NOERROR;
       break;
     case ISO15765_WFT_MAX:
-      conn->iso15766wtfMax = cfg->Value;
+      pcfg->Iso15765WftMax = cfg->Value;
       err = STATUS_NOERROR;
       break;
+      // ISO9141 or ISO14230
+    case P1_MIN:
+      pcfg->P1Min = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case P1_MAX:
+      pcfg->P1Max = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case P2_MIN:
+      pcfg->P2Min = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case P2_MAX:
+      pcfg->P2Max = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case P3_MIN:
+      pcfg->P3Min = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case P3_MAX:
+      pcfg->P3Max = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case P4_MIN:
+      pcfg->P4Min = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case P4_MAX:
+      pcfg->P4Max = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case W0:
+      pcfg->W0a = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case W1:
+      pcfg->W1a = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case W2:
+      pcfg->W2a = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case W3:
+      pcfg->W3a = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case W4:
+      pcfg->W4a = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case W5:
+      pcfg->W5a = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case TIDLE:
+      pcfg->Tidle = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case TINIL:
+      pcfg->Tinil = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case TWUP:
+      pcfg->Twup = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case PARITY:
+      pcfg->Parity = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case DATA_BITS:
+      pcfg->DataBits = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case FIVE_BAUD_MOD:
+      pcfg->FiveBaudMod = cfg->Value;
+      err = STATUS_NOERROR;
+    break;
     default:
       break;
     }
@@ -411,9 +473,13 @@ uint32_t handldle_set_config(j2534_conn* conn, SCONFIG_LIST* cfgList) {
 
 bool j2534_ioctl(packet_t *rx_packet, packet_t *tx_packet) {
   uint32_t channelID, ioctl, err = ERR_NOT_SUPPORTED;
+  if(rx_packet->data_len < 8) {
+    goto error;
+  }
   uint8_t retSize = 4;
   memcpy(&channelID, rx_packet->data, 4);
   memcpy(&ioctl, rx_packet->data + 4, 4);
+
   j2534_conn* conn = get_connection(channelID);
 
   switch(ioctl) {
@@ -443,10 +509,14 @@ bool j2534_ioctl(packet_t *rx_packet, packet_t *tx_packet) {
     err = STATUS_NOERROR;
     break;
   case CLEAR_MSG_FILTERS:
-    err = clear_can_filters(conn);
+    err = conn->ioctl_clear_filters(conn);
     break;
   case FIVE_BAUD_INIT:
+    err = conn->ioctl_five_baud_init(conn);
+    break;
   case FAST_INIT:
+    err = conn->ioctl_fast_init(conn);
+    break;
   case CLEAR_TX_BUFFER:
   case CLEAR_PERIODIC_MSGS:
   case CLEAR_FUNCT_MSG_LOOKUP_TABLE:
@@ -456,67 +526,65 @@ bool j2534_ioctl(packet_t *rx_packet, packet_t *tx_packet) {
   default:
       break;
   }
+
   memcpy(retBuff, &err, 4);
+  return prepareReplyPacket(tx_packet, rx_packet, retBuff, retSize, cmd_term_ack);
 
-  return prepareReplyPacket(tx_packet, rx_packet, retBuff, retSize, cmd_term_ack);;
-}
-
-uint32_t write_message(j2534_conn* conn, uint32_t timeout, uint16_t len, uint8_t* data) {
-  uint32_t err = ERR_NOT_SUPPORTED;
-  CANTxFrame tx = {0};
-  memcpy(&tx, data, len);
-  if (canTransmit(conn->canp, CAN_ANY_MAILBOX, &tx, TIME_MS2I(timeout)) == MSG_OK) {
-    err = STATUS_NOERROR;
-  } else {
-    err = ERR_TIMEOUT;
-  }
-  return err;
+  error:
+    memcpy(retBuff, &err, 4);
+    return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_term_ack);
 }
 
 bool j2534_write_message(packet_t *rx_packet, packet_t *tx_packet) {
   uint32_t channelID, timeout, err = ERR_NOT_SUPPORTED;
+  if(rx_packet->data_len < 4) {
+    goto error;
+  }
   memcpy(&channelID, rx_packet->data, 4);
   memcpy(&timeout, rx_packet->data + 4, 4);
-  if (timeout == 0)
-    timeout = 100;
-
   j2534_conn* conn = get_connection(channelID);
-  err = write_message(conn, timeout, rx_packet->data_len-8, rx_packet->data+8);
+  err = conn->write(conn, timeout, rx_packet->data_len-8, rx_packet->data+8);
+
   memcpy(retBuff, &err, 4);
-
   return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_term_ack);
-}
 
-uint32_t start_periodic_message(j2534_conn* conn) {
-  (void)conn;
-  return ERR_NOT_SUPPORTED;
+  error:
+    memcpy(retBuff, &err, 4);
+    return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_term_ack);
 }
 
 bool j2534_start_periodic_message(packet_t *rx_packet, packet_t *tx_packet) {
   uint32_t channelID, err = ERR_NOT_SUPPORTED;
+  if(rx_packet->data_len < 4) {
+    goto error;
+  }
   memcpy(&channelID, rx_packet->data, 4);
   j2534_conn* conn = get_connection(channelID);
 
-  err = start_periodic_message(conn);
+  err = conn->start_periodic_msg(conn, rx_packet->data);
   memcpy(retBuff, &err, 4);
-
   return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_term_ack);
-}
 
-uint32_t stop_periodic_message(j2534_conn* conn) {
-  (void)conn;
-  return ERR_NOT_SUPPORTED;
+  error:
+    memcpy(retBuff, &err, 4);
+    return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_term_ack);
 }
 
 bool j2534_stop_periodic_message(packet_t *rx_packet, packet_t *tx_packet) {
   uint32_t channelID, err = ERR_NOT_SUPPORTED;
+  if(rx_packet->data_len < 4) {
+    goto error;
+  }
   memcpy(&channelID, rx_packet->data, 4);
   j2534_conn* conn = get_connection(channelID);
 
-  err = stop_periodic_message(conn);
+  err = conn->stop_periodic_msg(conn, 0);
   memcpy(retBuff, &err, 4);
-
   return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_term_ack);
+
+  error:
+    memcpy(retBuff, &err, 4);
+    return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_term_ack);
 }
 
 bool exec_cmd_j2534(packet_t *rx_packet, packet_t *tx_packet) {

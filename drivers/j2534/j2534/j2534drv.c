@@ -202,7 +202,6 @@ static int usb_send_packet(packet_t packet, unsigned int timeout) {
 	uint8_t buff[128] ={0};
 	uint16_t len = covertPacketToBuffer(&packet, buff);
 	if (len > 0) {
-		sleep_us(100);
 		r = libusb_bulk_transfer(handle, WQCAN_USB_EP_OUT, buff, (int)len, &bytes_written, 0);
 	}
 	if (r != LIBUSB_SUCCESS) {
@@ -224,7 +223,7 @@ uint32_t PTAPI PassThruOpen(void *pName, uint32_t *pDeviceID) {
 
 	log_trace("PassThruOpen: Device Name: %s, ID: %lu", (char*)pName, *pDeviceID);
 	libusb_init(NULL);
-    libusb_set_option(NULL, LIBUSB_OPTION_LOG_LEVEL, 4);
+//  libusb_set_option(NULL, LIBUSB_OPTION_LOG_LEVEL, 4);
 
     //Open Device with VendorID and ProductID
 	handle = libusb_open_device_with_vid_pid(NULL, WQCAN_VENDOR_ID, WQCAN_PRODUCT_ID);
@@ -488,6 +487,7 @@ uint32_t PTAPI PassThruWriteMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_
 		if(semaphore_take_timeout(wTxSem, 1000) == -1) {
 			return ERR_TIMEOUT;
 		}
+		sleep_us(150);
 
 		memcpy(&err, tx_packet.data, sizeof(err));
 	}

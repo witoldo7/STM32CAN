@@ -120,7 +120,7 @@ CSRC = $(ALLCSRC) \
        $(BOARDSRC) \
        $(BDMSRC) \
        usbadapter.c utils.c combi.c j2534.c socketcan.c bdmutility.c \
-       canutils.c main.c
+       canutils.c j2534can.c j2534kline.c main.c
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.

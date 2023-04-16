@@ -74,7 +74,6 @@ int main(void) {
   usbDisconnectBus(&USBD1);
   usbStart(&USBD1, &usb_config);
 
-  /* USB mass storage configuration */
   usbConnectBus(&USBD1);
   chEvtRegister(&shell_terminated, &el0, 0);
 
