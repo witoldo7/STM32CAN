@@ -798,7 +798,58 @@ uint32_t PTAPI PassThruIoctl(uint32_t ChannelID, uint32_t ioctlID, void *pInput,
 			memcpy(&err, resp_packet.data, sizeof(err));
 			break;
 		case FIVE_BAUD_INIT:
+		{
+			const SBYTE_ARRAY* init = pInput;
+			uint8_t dataSize = (uint8_t)init->NumOfBytes;
+			memcpy(buff + offset, &dataSize, 1);
+			offset += 1;
+			memcpy(buff + offset, init->BytePtr, dataSize);
+			txPacket.data_len = offset + dataSize;
+
+			if (usb_send_packet(txPacket, WQCAN_TIMEOUT)) {
+				last_error("PassThruIoctl: Tx USB failed");
+				return ERR_FAILED;
+			}
+
+			while (!do_exit & (resp_packet.cmd_code != cmd_j2534_ioctl))
+				semaphore_take(wait_for_response_semaphore);
+
+			memcpy(&err, resp_packet.data, sizeof(err));
+			if (resp_packet.data_len < 5)
+				return err;
+
+			uint8_t outbuff[32] = {0};
+			SBYTE_ARRAY outMsg = {.BytePtr = outbuff, .NumOfBytes = resp_packet.data[4]};
+			memcpy(outMsg.BytePtr, resp_packet.data + 5, outMsg.NumOfBytes);
+			*(SBYTE_ARRAY*)pOutput = outMsg;
+			break;
+		}
 		case FAST_INIT:
+			const PASSTHRU_MSG* initMSG = pInput;
+			uint8_t dataSize = (uint8_t)initMSG->DataSize;
+			memcpy(buff + offset, &dataSize, 1);
+			offset += 1;
+			memcpy(buff + offset, initMSG->Data, dataSize);
+			txPacket.data_len = offset + dataSize;
+
+			if (usb_send_packet(txPacket, WQCAN_TIMEOUT)) {
+				last_error("PassThruIoctl: Tx USB failed");
+				return ERR_FAILED;
+			}
+
+			while (!do_exit & (resp_packet.cmd_code != cmd_j2534_ioctl))
+				semaphore_take(wait_for_response_semaphore);
+
+			memcpy(&err, resp_packet.data, sizeof(err));
+			if (resp_packet.data_len < 5)
+				return err;
+
+			PASSTHRU_MSG msg = {0};
+			msg.ProtocolID = initMSG->ProtocolID;
+			msg.DataSize = resp_packet.data[4];
+			memcpy(msg.Data, resp_packet.data + 5, msg.DataSize);
+			*(PASSTHRU_MSG*)pOutput = msg;
+			break;
 		case CLEAR_PERIODIC_MSGS:
 		case CLEAR_FUNCT_MSG_LOOKUP_TABLE:
 		case ADD_TO_FUNCT_MSG_LOOKUP_TABLE:
