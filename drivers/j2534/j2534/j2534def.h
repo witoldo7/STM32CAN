@@ -148,9 +148,20 @@
 //
 // J2534-1 v04.04 Connect Flags
 //
+// 0 = Receive standard CAN ID (11 bit)
+// 1 = Receive extended CAN ID (29 bit)
 #define CAN_29BIT_ID						0x0100
+// 0 = The interface will generate and append the checksum as defined in ISO 9141-2 and ISO 14230-2 for
+// transmitted messages, and verify the checksum for received messages.
+// 1 = The interface will not generate and verify the checksum-the entire message will be treated as
+// data by the interface
 #define ISO9141_NO_CHECKSUM					0x0200
+// 0 = either standard or extended CAN ID types used ?CAN ID type defined by bit 8
+// 1 = both standard and extended CAN ID types used ?if the CAN controller allows prioritizing either standard
+// (11 bit) or extended (29 bit) CAN ID's then bit 8 will determine the higher priority ID type
 #define CAN_ID_BOTH							0x0800
+// 0 = use L-line and K-line for initialization address
+// 1 = use K-line only line for initialization address
 #define ISO9141_K_LINE_ONLY					0x1000
 
 //
