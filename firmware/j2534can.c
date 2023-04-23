@@ -94,7 +94,7 @@ bool rx_swcan_msg(void *rxmsg, packet_t *packet) {
 }
 
 uint32_t updateConfig(j2534_conn* conn) {
-  switch (conn->pcfg->protocol) {
+  switch (conn->protocol) {
     case CAN:
     case CAN_PS:
     case ISO15765:
@@ -110,7 +110,7 @@ uint32_t updateConfig(j2534_conn* conn) {
 }
 
 uint32_t registerCallback(j2534_conn* conn) {
-  switch (conn->pcfg->protocol) {
+  switch (conn->protocol) {
     case CAN:
     case CAN_PS:
     case ISO15765:
@@ -126,7 +126,7 @@ uint32_t registerCallback(j2534_conn* conn) {
 }
 
 uint32_t removeCallback(j2534_conn* conn) {
-  switch (conn->pcfg->protocol) {
+  switch (conn->protocol) {
     case CAN:
     case CAN_PS:
     case ISO15765:
@@ -147,7 +147,7 @@ uint32_t handle_connect_can(j2534_conn* conn) {
     return err;
   }
   j2534_can_cfg* can = conn->cfg;
-  if (!canBaudRate(can->canCfg, conn->pcfg->DataRate, &conn->pcfg->SyncJumpWidth, &conn->pcfg->BitSamplePoint)) {
+  if (!canBaudRate(can->canCfg, conn->DataRate, &conn->pcfg->SyncJumpWidth, &conn->pcfg->BitSamplePoint)) {
     return ERR_INVALID_BAUDRATE;
   }
 
@@ -246,7 +246,7 @@ uint32_t ioctl_datarate_can(j2534_conn* conn) {
   j2534_protocol_cfg *pcfg = conn->pcfg;
   j2534_can_cfg *can = conn->cfg;
   canStop(can->canp);
-  if (!canBaudRate(can->canCfg, pcfg->DataRate, &pcfg->SyncJumpWidth, &pcfg->BitSamplePoint)) {
+  if (!canBaudRate(can->canCfg, conn->DataRate, &pcfg->SyncJumpWidth, &pcfg->BitSamplePoint)) {
     return ERR_INVALID_BAUDRATE;
   }
   canStart(can->canp, can->canCfg);

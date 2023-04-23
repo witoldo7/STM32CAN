@@ -19,7 +19,7 @@ uint32_t stop_periodic_msg_kline(j2534_conn* conn, uint32_t msg);
 uint32_t ioctl_clear_filters_kline(j2534_conn* conn);
 uint32_t ioctl_datarate_kline(j2534_conn* conn);
 uint32_t ioctl_loopback_kline(j2534_conn* conn);
-uint32_t ioctl_fast_init_kline(void* conn);
-uint32_t ioctl_five_baud_init_kline(void* conn);
+uint32_t ioctl_fast_init_kline(j2534_conn* conn, uint8_t* in, uint8_t* out);
+uint32_t ioctl_five_baud_init_kline(j2534_conn* conn, uint8_t* in, uint8_t* out);
 
 #endif /* J2534KLINE_H_ */

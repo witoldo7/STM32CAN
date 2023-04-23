@@ -21,9 +21,6 @@ typedef struct {
 } CAN_FILTER;
 
 typedef struct {
-  uint32_t protocol;
-  uint32_t flags;
-  uint32_t DataRate;
   uint32_t Loopback;
   uint32_t NodeAddress;
   uint32_t NetworkLine;
@@ -83,6 +80,9 @@ typedef struct {
 } j2534_can_cfg;
 
 typedef struct {
+  uint32_t protocol;
+  uint32_t flags;
+  uint32_t DataRate;
   j2534_protocol_cfg* pcfg;
   void* cfg;
   uint32_t (*connect)(void*);
@@ -95,8 +95,8 @@ typedef struct {
   uint32_t (*ioctl_lopback)(void*);
   uint32_t (*ioctl_datarate)(void*);
   uint32_t (*ioctl_clear_filters)(void*);
-  uint32_t (*ioctl_five_baud_init)(void*);
-  uint32_t (*ioctl_fast_init)(void*);
+  uint32_t (*ioctl_five_baud_init)(void*, uint8_t*, uint8_t*);
+  uint32_t (*ioctl_fast_init)(void*, uint8_t*, uint8_t*);
   bool isConnected;
 } j2534_conn;
 

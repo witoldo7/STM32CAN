@@ -274,6 +274,12 @@
 #define LINE_SWM1      PAL_LINE(GPIOA, 6U)
 
 /*
+ * KLine lines assignment.
+ */
+#define LINE_KL_RX      PAL_LINE(GPIOD, PD06_KL_RX)
+#define LINE_KL_TX      PAL_LINE(GPIOD, PD05_KL_TX)
+
+/*
  * Misd lines.
  */
 #define LINE_SD_DETECT PAL_LINE(GPIOD, 7U)
