@@ -671,8 +671,8 @@
                      PIN_PUPDR_PULLUP(PD02_SDIO_CMD) | \
                      PIN_PUPDR_PULLDOWN(PD03) | \
                      PIN_PUPDR_PULLDOWN(PD04) | \
-                     PIN_PUPDR_PULLUP(PD05_KL_TX) | \
-                     PIN_PUPDR_PULLUP(PD06_KL_RX) | \
+                     PIN_PUPDR_FLOATING(PD05_KL_TX) | \
+                     PIN_PUPDR_FLOATING(PD06_KL_RX) | \
                      PIN_PUPDR_PULLUP(PD07_SDIO_CD) | \
                      PIN_PUPDR_PULLDOWN(PD08) | \
                      PIN_PUPDR_PULLDOWN(PD09) | \
