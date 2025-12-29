@@ -7,71 +7,47 @@
 #include <string.h>
 #include "j2534.h"
 #include "j2534can.h"
-
-CAN_RamAddress hscan_ram, swcan_ram;
-
-CANRamConfig hscan_ram_cfg = {
-  .MessageRAMOffset = 0,
-  .StdFiltersNbr = FILTER_NBR,
-  .ExtFiltersNbr = FILTER_NBR,
-  .RxFifo0ElmtsNbr = 32,
-  .RxFifo0ElmtSize = FDCAN_DATA_BYTES_8,
-  .RxFifo1ElmtsNbr = 8,
-  .RxFifo1ElmtSize = FDCAN_DATA_BYTES_8,
-  .RxBuffersNbr = 8,
-  .RxBufferSize = FDCAN_DATA_BYTES_8,
-  .TxEventsNbr = 1,
-  .TxBuffersNbr = 1,
-  .TxFifoQueueElmtsNbr = 1,
-  .TxElmtSize = FDCAN_DATA_BYTES_8
-};
-
-CANRamConfig swcan_ram_cfg = {
-   //fixme
-  .MessageRAMOffset = 0,
-  .StdFiltersNbr = FILTER_NBR,
-  .ExtFiltersNbr = FILTER_NBR,
-  .RxFifo0ElmtsNbr = 2,
-  .RxFifo0ElmtSize = FDCAN_DATA_BYTES_8,
-  .RxFifo1ElmtsNbr = 2,
-  .RxFifo1ElmtSize = FDCAN_DATA_BYTES_8,
-  .RxBuffersNbr = 2,
-  .RxBufferSize = FDCAN_DATA_BYTES_8,
-  .TxEventsNbr = 1,
-  .TxBuffersNbr = 1,
-  .TxFifoQueueElmtsNbr = 1,
-  .TxElmtSize = FDCAN_DATA_BYTES_8
-};
+#include "debug.h"
 
 static CANConfig hsCanConfig = {
-  .DBTP =  0,
-  .CCCR =  0, //FDCAN_CCCR_TEST,
-  .TEST =  0, //FDCAN_TEST_LBCK,
+  OPMODE_CAN,
+  //OPMODE_FDCAN,                  /* OP MODE */
+  0,                               /* NBTP */
+  0,                               /* DBTP */
+  0,                               /* TDCR */
+  0,                               /* CCCR */
+  0,                               /* TEST */
+  0                                /* GFC */
+};
+static uint32_t hs_cf_index = 0;
+static CANFilter hs_filters[FILTER_NBR] = {0};
+
+j2534_can_cfg canCfgHs = {
+  .canp = &CAND1,
+  .canCfg = &hsCanConfig,
+  .cf_index = &hs_cf_index,
+  .filters = hs_filters,
 };
 
 static CANConfig swCanConfig = {
-  .DBTP = 0,
-  .CCCR =  0, //FDCAN_CCCR_TEST,
-  .TEST =  0, //FDCAN_TEST_LBCK,
+  OPMODE_CAN,
+  //OPMODE_FDCAN,                  /* OP MODE */
+  0,                               /* NBTP */
+  0,                               /* DBTP */
+  0,                               /* TDCR */
+  0,                               /* CCCR */
+  0,                               /* TEST */
+  0                                /* GFC */
 };
+static uint32_t sw_cf_index = 0;
+static CANFilter sw_filters[FILTER_NBR] = {0};
 
-static CAN_FILTER swCf = {.msgRam = &swcan_ram, .index = 0, .filter = {{0}}};
-static CAN_FILTER hsCf = {.msgRam = &hscan_ram, .index = 0, .filter = {{0}}};
-
-j2534_can_cfg canCfgHs = {.canp = &CAND1,
-                     .canCfg = &hsCanConfig,
-                     .canFilter = &hsCf,
-                     .ramCfg = &hscan_ram_cfg,
-                     .ramAdr = &hscan_ram
+j2534_can_cfg canCfgSw = {
+  .canp = &CAND2,
+  .canCfg = &swCanConfig,
+  .cf_index = &sw_cf_index,
+  .filters = sw_filters,
 };
-
-j2534_can_cfg canCfgSw = {.canp = &CAND2,
-                     .canCfg = &swCanConfig,
-                     .canFilter = &swCf,
-                     .ramCfg = &swcan_ram_cfg,
-                     .ramAdr = &swcan_ram
-};
-
 
 bool rx_hscan_msg(void *rxmsg, packet_t *packet) {
   CANRxFrame *msg = (CANRxFrame*) rxmsg;
@@ -146,18 +122,20 @@ uint32_t handle_connect_can(j2534_conn* conn) {
   if (err != STATUS_NOERROR) {
     return err;
   }
+
   j2534_can_cfg* can = conn->cfg;
   if (!canBaudRate(can->canCfg, conn->DataRate, &conn->pcfg->SyncJumpWidth, &conn->pcfg->BitSamplePoint)) {
     return ERR_INVALID_BAUDRATE;
   }
 
-  canMemorryConfig(can->canp, can->canCfg, can->ramCfg, can->ramAdr);
   canGlobalFilter(can->canCfg, FDCAN_REJECT, FDCAN_REJECT, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
   ioctl_clear_filters_can(conn);
+
   err = registerCallback(conn);
   if (err != STATUS_NOERROR) {
     return err;
   }
+
   canStart(can->canp, can->canCfg);
   return STATUS_NOERROR;
 }
@@ -171,47 +149,59 @@ uint32_t handle_disconnect_can(j2534_conn* conn) {
 }
 
 uint32_t start_filter_can(j2534_conn* conn, uint8_t* data, uint32_t* idx) {
-  CAN_FILTER *cf = ((j2534_can_cfg*)conn->cfg)->canFilter;
-  uint32_t flags;
-  uint32_t pattern, mask;
+  j2534_can_cfg *can = conn->cfg;
+  uint32_t cf_index = *can->cf_index;
+  uint32_t pattern, mask, flags;
   uint8_t size = data[11], type = data[10];
   memcpy(&flags, data + 4, 4);
   memcpy(&mask, data + 12, size);
   memcpy(&pattern, data + 24, size);
-  (void)type;
-  if (cf->index >= FILTER_NBR)
-    return ERR_EXCEEDED_LIMIT;
 
-  cf->filter[cf->index].IdType = (flags & CAN_29BIT_ID) ? FDCAN_EXTENDED_ID : FDCAN_STANDARD_ID;
-  cf->filter[cf->index].FilterIndex = cf->index;
-  cf->filter[cf->index].FilterType = FDCAN_FILTER_MASK;
-  cf->filter[cf->index].FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
-  cf->filter[cf->index].FilterID1 = pattern;
-  cf->filter[cf->index].FilterID2 = mask;
-
-  canFilter(cf->msgRam, &cf->filter[cf->index]);
-  *idx = cf->index;
-  cf->index++;
+  switch (type)
+  {
+  case PASS_FILTER:
+    can->filters[cf_index].filter_cfg = CAN_FILTER_CFG_FIFO_0;
+    break;
+  case BLOCK_FILTER:
+    can->filters[cf_index].filter_cfg = CAN_FILTER_CFG_REJECT;
+    break;
+  
+  default:
+    return ERR_NOT_SUPPORTED;
+    break;
+  }
+  
+  if(flags & CAN_29BIT_ID) {
+    can->filters[cf_index].filter_type = CAN_FILTER_TYPE_EXT;
+  } else {
+    can->filters[cf_index].filter_type = CAN_FILTER_TYPE_STD;
+  }
+  can->filters[cf_index].filter_mode = CAN_FILTER_MODE_CLASSIC;
+  can->filters[cf_index].identifier1 = pattern;
+  can->filters[cf_index].identifier2 = mask;
+  *idx = cf_index++;
+  canSTM32SetFilters(can->canp, cf_index, can->filters);
   return STATUS_NOERROR;
 }
 
 uint32_t ioctl_clear_filters_can(j2534_conn* conn) {
   j2534_can_cfg *can = conn->cfg;
-  CAN_FILTER *cf = can->canFilter;
-  memset(cf->filter, 0, FILTER_NBR-1);
-  for(uint8_t i = 0; i < FILTER_NBR; i++) {
-    cf->filter[i].FilterIndex = i;
-    canFilter(cf->msgRam, &cf->filter[i]);
-  }
-  cf->index = 0;
+  CANFilter filter[FILTER_NBR] = {0};
+  can->filters = filter;
+  *can->cf_index = 0;
+  canSTM32SetFilters(can->canp, FILTER_NBR, can->filters);
+
   return STATUS_NOERROR;
 }
 
 uint32_t stop_filter_can(j2534_conn* conn, uint32_t idx) {
-  CAN_FILTER *cf = ((j2534_can_cfg*)conn->cfg)->canFilter;
-  memset(&cf->filter[idx], 0, sizeof(CAN_Filter));
-  cf->filter[idx].FilterIndex = idx;
-  canFilter(cf->msgRam, &cf->filter[idx]);
+  j2534_can_cfg *can = conn->cfg;
+  can->filters[idx].filter_cfg = 0;
+  can->filters[idx].filter_type = 0;
+  can->filters[idx].filter_mode = 0;
+  can->filters[idx].identifier1 = 0;
+  can->filters[idx].identifier2 = 0;
+  canSTM32SetFilters(can->canp, idx, can->filters);
   return STATUS_NOERROR;
 }
 

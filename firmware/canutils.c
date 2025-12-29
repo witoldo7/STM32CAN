@@ -38,126 +38,12 @@ uint8_t CvtEltSize(uint8_t e) {
   return CvtEltSizeArr[e];
 }
 
-void canFilter(CAN_RamAddress *msgRam, CAN_Filter *filter) {
-  uint32_t filterElementW1;
-  uint32_t filterElementW2;
-  uint32_t *filterAddress;
-
-  if (filter->IdType == FDCAN_STANDARD_ID) {
-    if (filter->FilterConfig == FDCAN_FILTER_TO_RXBUFFER) {
-      filterElementW1 = ((FDCAN_FILTER_TO_RXBUFFER << 27U)       |
-                           (filter->FilterID1 << 16U)       |
-                           (filter->IsCalibrationMsg << 8U) |
-                           filter->RxBufferIndex);
-    } else {
-      filterElementW1 = ((filter->FilterType << 30U)   |
-                         (filter->FilterConfig << 27U) |
-                         (filter->FilterID1 << 16U)    |
-                         filter->FilterID2);
-    }
-
-    filterAddress = (uint32_t *)(msgRam->StandardFilterSA + (filter->FilterIndex * 4U));
-    *filterAddress = filterElementW1;
-  } else {
-    filterElementW1 = ((filter->FilterConfig << 29U) | filter->FilterID1);
-    if (filter->FilterConfig == FDCAN_FILTER_TO_RXBUFFER) {
-      filterElementW2 = filter->RxBufferIndex;
-    } else {
-      filterElementW2 = ((filter->FilterType << 30U) | filter->FilterID2);
-    }
-
-    filterAddress = (uint32_t *)(msgRam->ExtendedFilterSA + (filter->FilterIndex * 4U * 2U));
-    *filterAddress = filterElementW1;
-    filterAddress++;
-    *filterAddress = filterElementW2;
-  }
-}
-
 void canGlobalFilter(CANConfig *can_cfg, uint32_t NonMatchingStd, uint32_t NonMatchingExt,
                      uint32_t RejectRemoteStd, uint32_t RejectRemoteExt) {
-  can_cfg->GFC = ((NonMatchingStd << FDCAN_GFC_ANFS_Pos) |
+  can_cfg->RXGFC = ((NonMatchingStd << FDCAN_GFC_ANFS_Pos) |
                  (NonMatchingExt << FDCAN_GFC_ANFE_Pos)  |
                  (RejectRemoteStd << FDCAN_GFC_RRFS_Pos) |
                  (RejectRemoteExt << FDCAN_GFC_RRFE_Pos));
-}
-
-bool canMemorryConfig(CANDriver *canp, CANConfig *can_cfg, CANRamConfig *cfg, CAN_RamAddress *msgRam) {
-  uint32_t RAMcounter;
-  uint32_t startAddress = cfg->MessageRAMOffset;
-
-  MODIFY_REG(can_cfg->SIDFC, FDCAN_SIDFC_FLSSA, (startAddress << FDCAN_SIDFC_FLSSA_Pos));
-  MODIFY_REG(can_cfg->SIDFC, FDCAN_SIDFC_FLSSA, (startAddress << FDCAN_SIDFC_FLSSA_Pos));
-
-  /* Standard filter elements number */
-  MODIFY_REG(can_cfg->SIDFC, FDCAN_SIDFC_LSS, (cfg->StdFiltersNbr << FDCAN_SIDFC_LSS_Pos));
-
-  /* Extended filter list start address */
-  startAddress += cfg->StdFiltersNbr;
-  MODIFY_REG(can_cfg->XIDFC, FDCAN_XIDFC_FLESA, (startAddress << FDCAN_XIDFC_FLESA_Pos));
-
-  /* Extended filter elements number */
-  MODIFY_REG(can_cfg->XIDFC, FDCAN_XIDFC_LSE, (cfg->ExtFiltersNbr << FDCAN_XIDFC_LSE_Pos));
-
-  /* Rx FIFO 0 start address */
-  startAddress += (cfg->ExtFiltersNbr * 2U);
-  MODIFY_REG(can_cfg->RXF0C, FDCAN_RXF0C_F0SA, (startAddress << FDCAN_RXF0C_F0SA_Pos));
-
-  /* Rx FIFO 0 elements number */
-  MODIFY_REG(can_cfg->RXF0C, FDCAN_RXF0C_F0S, (cfg->RxFifo0ElmtsNbr << FDCAN_RXF0C_F0S_Pos));
-
-  /* Rx FIFO 1 start address */
-  startAddress += (cfg->RxFifo0ElmtsNbr * cfg->RxFifo0ElmtSize);
-  MODIFY_REG(can_cfg->RXF1C, FDCAN_RXF1C_F1SA, (startAddress << FDCAN_RXF1C_F1SA_Pos));
-
-  /* Rx FIFO 1 elements number */
-  MODIFY_REG(can_cfg->RXF1C, FDCAN_RXF1C_F1S, (cfg->RxFifo1ElmtsNbr << FDCAN_RXF1C_F1S_Pos));
-
-  /* Rx buffer list start address */
-  startAddress += (cfg->RxFifo1ElmtsNbr * cfg->RxFifo1ElmtSize);
-  MODIFY_REG(can_cfg->RXBC, FDCAN_RXBC_RBSA, (startAddress << FDCAN_RXBC_RBSA_Pos));
-
-  /* Tx event FIFO start address */
-  startAddress += (cfg->RxBuffersNbr * cfg->RxBufferSize);
-  MODIFY_REG(can_cfg->TXEFC, FDCAN_TXEFC_EFSA, (startAddress << FDCAN_TXEFC_EFSA_Pos));
-
-  /* Tx event FIFO elements number */
-  MODIFY_REG(can_cfg->TXEFC, FDCAN_TXEFC_EFS, (cfg->TxEventsNbr << FDCAN_TXEFC_EFS_Pos));
-
-  /* Tx buffer list start address */
-  startAddress += (cfg->TxEventsNbr * 2U);
-  MODIFY_REG(can_cfg->TXBC, FDCAN_TXBC_TBSA, (startAddress << FDCAN_TXBC_TBSA_Pos));
-
-  /* Dedicated Tx buffers number */
-  MODIFY_REG(can_cfg->TXBC, FDCAN_TXBC_NDTB, (cfg->TxBuffersNbr << FDCAN_TXBC_NDTB_Pos));
-
-  /* Tx FIFO/queue elements number */
-  MODIFY_REG(can_cfg->TXBC, FDCAN_TXBC_TFQS, (cfg->TxFifoQueueElmtsNbr << FDCAN_TXBC_TFQS_Pos));
-
-
-  can_cfg->TXESC = CvtEltSize(cfg->TxElmtSize); // 8 Byte mode only (4 words per message)
-  can_cfg->RXESC = CvtEltSize(cfg->RxFifo0ElmtSize) << FDCAN_RXESC_F0DS_Pos
-      | CvtEltSize(cfg->RxFifo1ElmtSize) << FDCAN_RXESC_F1DS_Pos
-      | CvtEltSize(cfg->RxBufferSize) << FDCAN_RXESC_RBDS_Pos;// 8 Byte mode only (4 words per message)
-
-  msgRam->StandardFilterSA = (uint32_t)(canp->ram_base + (cfg->MessageRAMOffset * 4U));
-  msgRam->ExtendedFilterSA = msgRam->StandardFilterSA + (cfg->StdFiltersNbr * 4U);
-  msgRam->RxFIFO0SA = msgRam->ExtendedFilterSA + (cfg->ExtFiltersNbr * 2U * 4U);
-  msgRam->RxFIFO1SA = msgRam->RxFIFO0SA + (cfg->RxFifo0ElmtsNbr * cfg->RxFifo0ElmtSize * 4U);
-  msgRam->RxBufferSA = msgRam->RxFIFO1SA + (cfg->RxFifo1ElmtsNbr * cfg->RxFifo1ElmtSize * 4U);
-  msgRam->TxEventFIFOSA = msgRam->RxBufferSA + (cfg->RxBuffersNbr * cfg->RxBufferSize * 4U);
-  msgRam->TxBufferSA = msgRam->TxEventFIFOSA + (cfg->TxEventsNbr * 2U * 4U);
-  msgRam->TxFIFOQSA = msgRam->TxBufferSA + (cfg->TxBuffersNbr * cfg->TxElmtSize * 4U);
-  msgRam->EndAddress = msgRam->TxFIFOQSA + (cfg->TxFifoQueueElmtsNbr * cfg->TxElmtSize * 4U);
-
-  if (msgRam->EndAddress > FDCAN_MESSAGE_RAM_END_ADDRESS) {
-    return false;
-  } else {
-    for (RAMcounter = msgRam->StandardFilterSA; RAMcounter < msgRam->EndAddress; RAMcounter += 4U)
-    {
-      *(uint32_t *)(RAMcounter) = 0x00000000;
-    }
-  }
-  return true;
 }
 
 /**

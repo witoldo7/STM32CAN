@@ -11,14 +11,7 @@
 #include "utils.h"
 #include "canutils.h"
 #include "j2534def.h"
-
 #define FILTER_NBR 16
-
-typedef struct {
-  CAN_Filter filter[FILTER_NBR];
-  CAN_RamAddress *msgRam;
-  uint8_t index;
-} CAN_FILTER;
 
 typedef struct {
   uint32_t Loopback;
@@ -74,9 +67,8 @@ typedef struct {
 typedef struct {
   CANDriver* canp;
   CANConfig* canCfg;
-  CANRamConfig* ramCfg;
-  CAN_RamAddress* ramAdr;
-  CAN_FILTER* canFilter;
+  uint32_t* cf_index;
+  CANFilter* filters;
 } j2534_can_cfg;
 
 typedef struct {

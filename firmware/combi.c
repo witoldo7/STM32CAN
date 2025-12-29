@@ -16,64 +16,53 @@
 uint8_t version[2] = {0x03, 0x01};
 uint8_t egt_temp[5] = {0};
 
-CAN_RamAddress can1_ram;
-
-CAN_Filter filter0 = {
-  .IdType = FDCAN_STANDARD_ID,
-  .FilterIndex = 0,
-  .FilterType = FDCAN_FILTER_MASK,
-  .FilterConfig = FDCAN_FILTER_TO_RXFIFO1_HP,
-  .FilterID1 = 0x7E8,
-  .FilterID2 = 0x7FF,
-};
-
-CAN_Filter filter1 = {
-  .IdType = FDCAN_STANDARD_ID,
-  .FilterIndex = 1,
-  .FilterType = FDCAN_FILTER_MASK,
-  .FilterConfig = FDCAN_FILTER_TO_RXFIFO0_HP,
-  .FilterID1 = 0x7E0,
-  .FilterID2 = 0x7FF,
-};
-
-CAN_Filter filter2 = {
-  .IdType = FDCAN_STANDARD_ID,
-  .FilterIndex = 2,
-  .FilterType = FDCAN_FILTER_DUAL,
-  .FilterConfig = FDCAN_FILTER_TO_RXFIFO0,
-  .FilterID1 = 0x5E8,
-  .FilterID2 = 0x311,
-};
-
-CAN_Filter filter3 = {
-  .IdType = FDCAN_STANDARD_ID,
-  .FilterIndex = 3,
-  .FilterType = FDCAN_FILTER_MASK,
-  .FilterConfig = FDCAN_FILTER_TO_RXFIFO0,
-  .FilterID1 = 0x011,
-  .FilterID2 = 0x7FF,
-};
-
-CANRamConfig can1_ram_cfg = {
-  .MessageRAMOffset = 0,
-  .StdFiltersNbr = 4,
-  .ExtFiltersNbr = 0,
-  .RxFifo0ElmtsNbr = 16,
-  .RxFifo0ElmtSize = FDCAN_DATA_BYTES_8,
-  .RxFifo1ElmtsNbr = 16,
-  .RxFifo1ElmtSize = FDCAN_DATA_BYTES_8,
-  .RxBuffersNbr = 16,
-  .RxBufferSize = FDCAN_DATA_BYTES_8,
-  .TxEventsNbr = 1,
-  .TxBuffersNbr = 2,
-  .TxFifoQueueElmtsNbr = 1,
-  .TxElmtSize = FDCAN_DATA_BYTES_8
-};
-
 static CANConfig canConfig1 = {
-  .DBTP =  0,
-  .CCCR =  0, //FDCAN_CCCR_TEST,
-  .TEST =  0, //FDCAN_TEST_LBCK,
+  OPMODE_CAN,//OPMODE_FDCAN,       /* OP MODE */
+  0,                               /* NBTP */
+  0,                               /* DBTP */
+  0,                               /* TDCR */
+  0,                               /* CCCR */
+  0,                               /* TEST */
+  0                                /* GFC */
+};
+
+#define FILTER_SIZE 5
+static CANFilter filters[FILTER_SIZE] = {
+{
+  .filter_mode = CAN_FILTER_MODE_CLASSIC,
+  .filter_cfg = CAN_FILTER_CFG_FIFO_0,
+  .filter_type = CAN_FILTER_TYPE_STD,
+  .identifier1 = 0x180,
+  .identifier2 = 0xFFFF,
+},
+{
+  .filter_mode = CAN_FILTER_MODE_CLASSIC,
+  .filter_cfg = CAN_FILTER_CFG_FIFO_0,
+  .filter_type = CAN_FILTER_TYPE_STD,
+  .identifier1 = 0x5E8,
+  .identifier2 = 0xFFFF,
+},
+{
+  .filter_mode = CAN_FILTER_MODE_CLASSIC,
+  .filter_cfg = CAN_FILTER_CFG_FIFO_0,
+  .filter_type = CAN_FILTER_TYPE_STD,
+  .identifier1 = 0x7E8,
+  .identifier2 = 0xFFFF,
+},
+{
+  .filter_mode = CAN_FILTER_MODE_CLASSIC,
+  .filter_cfg = CAN_FILTER_CFG_FIFO_0,
+  .filter_type = CAN_FILTER_TYPE_STD,
+  .identifier1 = 0x664,
+  .identifier2 = 0xFFFF,
+},
+{
+  .filter_mode = CAN_FILTER_MODE_CLASSIC,
+  .filter_cfg = CAN_FILTER_CFG_FIFO_0,
+  .filter_type = CAN_FILTER_TYPE_STD,
+  .identifier1 = 0x665,
+  .identifier2 = 0xFFFF,
+},
 };
 
 bool combi_rx_can_cb(void *msg, packet_t *packet) {
@@ -109,14 +98,9 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
       break;
     case combi_open:
       registerHsCanCallback(&combi_rx_can_cb);
-      canMemorryConfig(&CAND1, &canConfig1, &can1_ram_cfg, &can1_ram);
       canGlobalFilter(&canConfig1, FDCAN_REJECT, FDCAN_REJECT, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
       canStart(&CAND1, &canConfig1);
-      //Combilib + Trionic 8 filters
-      canFilter(&can1_ram, &filter0);
-      canFilter(&can1_ram, &filter1);
-      canFilter(&can1_ram, &filter2);
-      canFilter(&can1_ram, &filter3);
+      canSTM32SetFilters(&CAND1, FILTER_SIZE, filters);
       break;
     default:
       return false;

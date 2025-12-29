@@ -59,52 +59,11 @@
 #define CAN_CTRLMODE_TDC_AUTO       0x200   /* CAN transiver automatically calculates TDCV */
 #define CAN_CTRLMODE_TDC_MANUAL     0x400   /* TDCV is manually set up by user */
 
-typedef struct {
-  uint32_t IdType;
-  uint32_t FilterIndex;
-  uint32_t FilterType;
-  uint32_t FilterConfig;
-  uint32_t FilterID1;
-  uint32_t FilterID2;
-  uint32_t RxBufferIndex;
-  uint32_t IsCalibrationMsg;
-} CAN_Filter;
-
-typedef struct {
-  uint32_t StandardFilterSA;
-  uint32_t ExtendedFilterSA;
-  uint32_t RxFIFO0SA;
-  uint32_t RxFIFO1SA;
-  uint32_t RxBufferSA;
-  uint32_t TxEventFIFOSA;
-  uint32_t TxBufferSA;
-  uint32_t TxFIFOQSA;
-  uint32_t TTMemorySA;
-  uint32_t EndAddress;
-} CAN_RamAddress;
-
-typedef struct {
-  uint32_t MessageRAMOffset;
-  uint32_t StdFiltersNbr;
-  uint32_t ExtFiltersNbr;
-  uint32_t RxFifo0ElmtsNbr;
-  uint32_t RxFifo0ElmtSize;
-  uint32_t RxFifo1ElmtsNbr;
-  uint32_t RxFifo1ElmtSize;
-  uint32_t RxBuffersNbr;
-  uint32_t RxBufferSize;
-  uint32_t TxEventsNbr;
-  uint32_t TxBuffersNbr;
-  uint32_t TxFifoQueueElmtsNbr;
-  uint32_t TxElmtSize;
-} CANRamConfig;
-
 uint8_t can_fd_dlc2len(uint8_t dlc);
 bool canBaudRate(CANConfig *can_cfg, uint32_t can_baudrate, uint32_t *sjw, uint32_t *bsp);
-bool canMemorryConfig(CANDriver *canp, CANConfig *can_cfg, CANRamConfig *cfg, CAN_RamAddress *msgRam);
 void canGlobalFilter(CANConfig *can_cfg, uint32_t NonMatchingStd, uint32_t NonMatchingExt, uint32_t RejectRemoteStd,
                      uint32_t RejectRemoteExt);
-void canFilter(CAN_RamAddress *msgRam, CAN_Filter *filter);
+
 uint8_t CvtEltSize(uint8_t e);
 void registerHsCanCallback(bool (*cb)(void *rxmsg, packet_t *packet));
 void registerSwCanCallback(bool (*cb)(void *rxmsg, packet_t *packet));

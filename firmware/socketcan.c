@@ -11,56 +11,30 @@
 #include "utils.h"
 #include "canutils.h"
 
-CAN_RamAddress ram1, ram2;
-
-CANRamConfig hscan_ram_cfg1 = {
-  .MessageRAMOffset = 0,
-  .StdFiltersNbr = 8,
-  .ExtFiltersNbr = 0,
-  .RxFifo0ElmtsNbr = 2,
-  .RxFifo0ElmtSize = FDCAN_DATA_BYTES_64,
-  .RxFifo1ElmtsNbr = 2,
-  .RxFifo1ElmtSize = FDCAN_DATA_BYTES_64,
-  .RxBuffersNbr = 2,
-  .RxBufferSize = FDCAN_DATA_BYTES_64,
-  .TxEventsNbr = 2,
-  .TxBuffersNbr = 2,
-  .TxFifoQueueElmtsNbr = 2,
-  .TxElmtSize = FDCAN_DATA_BYTES_64
-};
-
-CANRamConfig ram2_cfg = {
-  .MessageRAMOffset = 384,
-  .StdFiltersNbr = 4,
-  .ExtFiltersNbr = 0,
-  .RxFifo0ElmtsNbr = 4,
-  .RxFifo0ElmtSize = FDCAN_DATA_BYTES_8,
-  .RxFifo1ElmtsNbr = 4,
-  .RxFifo1ElmtSize = FDCAN_DATA_BYTES_8,
-  .RxBuffersNbr = 4,
-  .RxBufferSize = FDCAN_DATA_BYTES_8,
-  .TxEventsNbr = 1,
-  .TxBuffersNbr = 4,
-  .TxFifoQueueElmtsNbr = 4,
-  .TxElmtSize = FDCAN_DATA_BYTES_8
-};
-
 static CANConfig canConfig1 = {
-  .DBTP =  0,
-  .CCCR =  0, //FDCAN_CCCR_TEST,
-  .TEST =  0, //FDCAN_TEST_LBCK,
+  OPMODE_CAN,//OPMODE_FDCAN,       /* OP MODE */
+  0,                               /* NBTP */
+  0,                               /* DBTP */
+  0,                               /* TDCR */
+  0,                               /* CCCR */
+  0,                               /* TEST */
+  0                                /* GFC */
 };
 
 static CANConfig canConfig2 = {
-  .DBTP =  0,
-  .CCCR =  0, //FDCAN_CCCR_TEST,
-  .TEST =  0, //FDCAN_TEST_LBCK,
+  OPMODE_CAN,//OPMODE_FDCAN,       /* OP MODE */
+  0,                               /* NBTP */
+  0,                               /* DBTP */
+  0,                               /* TDCR */
+  0,                               /* CCCR */
+  0,                               /* TEST */
+  0                                /* GFC */
 };
 
 /* data[0:3] - SID or EID
  * data[4]
  *    b0 - XTD
- *    b1 - RTRstatic uint8_t canFilterIndex = 0;
+ *    b1 - RTR
  *
  *    b2 - ESI
  *    b3 - BRS
@@ -136,6 +110,12 @@ bool socketcan_connectHs(packet_t *rx_packet, packet_t *tx_packet) {
       canConfig1.CCCR |= (FDCAN_CCCR_BRSE | FDCAN_CCCR_FDOE);
     }
 
+    if (mode & CAN_CTRLMODE_FD_NON_ISO || mode & CAN_CTRLMODE_FD) {
+      canConfig1.op_mode = OPMODE_FDCAN;
+    } else {
+      canConfig1.op_mode = OPMODE_CAN;
+    }
+
     /* Loopback Mode */
     if (mode & CAN_CTRLMODE_LOOPBACK) {
       canConfig1.CCCR |= FDCAN_CCCR_TEST | FDCAN_CCCR_MON;
@@ -151,7 +131,6 @@ bool socketcan_connectHs(packet_t *rx_packet, packet_t *tx_packet) {
     if (mode & CAN_CTRLMODE_ONE_SHOT) {
       canConfig1.CCCR |= FDCAN_CCCR_DAR;
     }
-    canMemorryConfig(&CAND1, &canConfig1, &hscan_ram_cfg1, &ram1);
     canStart(&CAND1, &canConfig1);
     break;
  default:
@@ -170,7 +149,6 @@ bool socketcan_connectSw(packet_t *rx_packet, packet_t *tx_packet) {
     registerSwCanCallback(&socketcan_rx_swcan_cb);
     uint32_t mode = rx_packet->data[4] | (uint32_t)rx_packet->data[1] << 24 | (uint32_t)rx_packet->data[2] << 16
                  | (uint32_t)rx_packet->data[3] << 8;
-     canMemorryConfig(&CAND2, &canConfig2, &ram2_cfg, &ram2);
 
      /* Loopback Mode */
      if (mode & CAN_CTRLMODE_LOOPBACK) {
@@ -188,8 +166,7 @@ bool socketcan_connectSw(packet_t *rx_packet, packet_t *tx_packet) {
        canConfig2.CCCR |= FDCAN_CCCR_DAR;
      }
      canStart(&CAND2, &canConfig2);
-     ram2.ExtendedFilterSA = 0;
-     ram2.StandardFilterSA = 0;
+
      palSetLine(LINE_SWM0);
      palSetLine(LINE_SWM1);
      break;
@@ -214,7 +191,7 @@ bool socketcan_txFrameHs(packet_t *rx_packet, packet_t *tx_packet) {
   txmsg.DLC = rx_packet->data[6];
   txmsg.common.RTR = (flags >> 1) & 0x00000001;
   txmsg.common.ESI = (flags >> 2) & 0x00000001;
-  txmsg.BRS = (flags >> 3) & 0x00000001;
+  //txmsg.BRS = (flags >> 3) & 0x00000001;
   txmsg.FDF = (flags >> 4) & 0x00000001;
   txmsg.EFC = (flags >> 5) & 0x00000001;
 
@@ -287,8 +264,8 @@ bool socketcan_bitrateSw(packet_t *rx_packet, packet_t *tx_packet) {
 bool socketcan_filterHs(packet_t *rx_packet, packet_t *tx_packet) {
   if (rx_packet->data_len != 0)  {
     if ((rx_packet->data_len == 1) && (rx_packet->data[0] == 0)) {
-      canGlobalFilter(&canConfig1, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
       canStop(&CAND1);
+      canGlobalFilter(&canConfig1, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
       canStart(&CAND1, &canConfig1);;
     }
   }
@@ -296,6 +273,13 @@ bool socketcan_filterHs(packet_t *rx_packet, packet_t *tx_packet) {
 }
 
 bool socketcan_filterSw(packet_t *rx_packet, packet_t *tx_packet) {
+  if (rx_packet->data_len != 0)  {
+    if ((rx_packet->data_len == 1) && (rx_packet->data[0] == 0)) {
+      canStop(&CAND2);
+      canGlobalFilter(&canConfig2, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
+      canStart(&CAND2, &canConfig2);;
+    }
+  }
   return prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
 }
 
