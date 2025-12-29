@@ -228,11 +228,11 @@ char *getLastError() {
 	return LAST_ERROR;
 }
 
-char* parsemsg(PASSTHRU_MSG* msg) {
+char* parsemsgb(PASSTHRU_MSG* msg, char* buff) {
 	if (msg == NULL)
 		return "NULL";
 	uint32_t length = 0;
-	length = sprintf(msgBuff,
+	length = sprintf(buff,
 		"\tMSG: %p\n"
 		"\t\tProtocolID:\t%s\n"
 		"\t\tRxStatus:\t%08lX\n"
@@ -245,9 +245,13 @@ char* parsemsg(PASSTHRU_MSG* msg) {
 		msg->Timestamp, msg->DataSize, msg->ExtraDataIndex);
 
 		for (unsigned int i = 0; i < msg->DataSize; i++)
-			sprintf(msgBuff + length + i*4, "%02X, ", (uint8_t)msg->Data[i]);
+			sprintf(buff + length + i*4, "%02X, ", (uint8_t)msg->Data[i]);
 
-	return msgBuff;
+	return buff;
+}
+
+char* parsemsg(PASSTHRU_MSG* msg) {
+	return parsemsgb(msg, msgBuff);
 }
 
 void check_debug_log(void) {

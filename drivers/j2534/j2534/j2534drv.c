@@ -22,31 +22,30 @@
 #define WQCAN_USB_EP_IN	    (LIBUSB_ENDPOINT_IN  | 2)   /* endpoint address */
 #define WQCAN_USB_EP_OUT    (LIBUSB_ENDPOINT_OUT | 2)   /* endpoint address */
 #define WQCAN_TIMEOUT	    100                         /* Connection timeout (in ms) */
+#define ASYNC_TRANSFERS     4
 
 static libusb_device_handle *handle;
-#define ASYNC_TRANSFERS 4
 static uint8_t databuf[ASYNC_TRANSFERS][128];
 static struct libusb_transfer *data_transfer[ASYNC_TRANSFERS] = {NULL};
+static bool isOpen = false;
 
 uint8_t data[32];
 packet_t tx_packet = {.data = data};
-
 uint8_t rspdata[128];
 packet_t resp_packet = {.data = rspdata};
-
-static bool isOpen = false;
-static volatile sig_atomic_t do_exit = 0;
-static semaphore_t wait_for_response_semaphore, wTxSem, txSem, rxSem;
-semaphore_t slock;
-static thread_t poll_thread;
-static uint32_t rx_counter=0;
-static uint32_t tx_counter=0;
+sig_atomic_t do_exit = 0;
+semaphore_t wait_for_response_semaphore, wTxSem, txSem, rxSem, slock;
+thread_t poll_thread;
+uint32_t rx_counter=0;
+uint32_t tx_counter=0;
+libusb_transfer_cb_fn transfer[4] = {NULL};
 
 static void request_exit() {
 	int r;
 	do_exit = 1;
-	for (uint8_t i = 0; i < ASYNC_TRANSFERS; i++)
+	for (uint8_t i = 0; i < ASYNC_TRANSFERS; i++) {
 		libusb_cancel_transfer(data_transfer[i]);
+	}
 	semaphore_destroy(wait_for_response_semaphore);
 	semaphore_destroy(rxSem);
 	semaphore_destroy(txSem);
@@ -61,6 +60,11 @@ static void request_exit() {
 	if (handle)
 		libusb_close(handle);
 	libusb_exit(NULL);
+	handle = NULL;
+	for (uint8_t i = 0; i < ASYNC_TRANSFERS; i++) {
+		data_transfer[i] = NULL;
+	}
+	isOpen = false;
 }
 
 #if defined(_MSC_VER)
@@ -111,7 +115,7 @@ static void setup_signals(void) {
 
 static void LIBUSB_CALL cb_process(struct libusb_transfer *transfer, struct libusb_transfer *data) {
 	if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
-		log_error("transfer status: %d", transfer->status);
+		log_warn("transfer status: %d", transfer->status);
 		goto err_free_transfer;
 	}
 
@@ -123,7 +127,7 @@ static void LIBUSB_CALL cb_process(struct libusb_transfer *transfer, struct libu
 			goto err_free_transfer;
 		return;
 	}
-
+    log_trace("usb_recv_packet cmd: %02x", transfer->buffer[0]);
 	switch (transfer->buffer[0]) {
 	case cmd_j2534_connect:
 	case cmd_j2534_disconnect:
@@ -161,7 +165,7 @@ static void LIBUSB_CALL cb_process(struct libusb_transfer *transfer, struct libu
 	return;
 
 err_free_transfer:
-	log_error("err_free_transfer");
+	log_warn("free_transfer");
 	if (data != NULL) {
 		libusb_free_transfer(data);
 		data = NULL;
@@ -181,9 +185,11 @@ static void LIBUSB_CALL cb_data3(struct libusb_transfer *transfer) {
 	cb_process(transfer, data_transfer[3]);
 }
 
-libusb_transfer_cb_fn transfer[4] = {cb_data, cb_data1, cb_data2, cb_data3};
-
 static int alloc_transfers(void) {
+	transfer[0] = cb_data;
+	transfer[1] = cb_data1;
+	transfer[2] = cb_data2;
+	transfer[3] = cb_data3;
 	for (uint8_t i = 0; i < ASYNC_TRANSFERS; i++) {
 		data_transfer[i] = libusb_alloc_transfer(0);
 		if (!data_transfer) {
@@ -203,6 +209,7 @@ static int usb_send_packet(packet_t packet, unsigned int timeout) {
 	uint16_t len = covertPacketToBuffer(&packet, buff);
 	if (len > 0) {
 		r = libusb_bulk_transfer(handle, WQCAN_USB_EP_OUT, buff, (int)len, &bytes_written, 0);
+		log_trace("usb_send_packet cmd: %02x", buff[0]);
 	}
 	if (r != LIBUSB_SUCCESS) {
 		last_error("USB data transfer error sending %d bytes: %s", (int)len, libusb_error_name(r));
@@ -220,7 +227,7 @@ uint32_t PTAPI PassThruOpen(void *pName, uint32_t *pDeviceID) {
 		return STATUS_NOERROR;
 	}
 	check_debug_log();
-
+    do_exit = 0;
 	log_trace("PassThruOpen: Device Name: %s, ID: %lu", (char*)pName, *pDeviceID);
 	libusb_init(NULL);
 //  libusb_set_option(NULL, LIBUSB_OPTION_LOG_LEVEL, 4);
@@ -232,11 +239,11 @@ uint32_t PTAPI PassThruOpen(void *pName, uint32_t *pDeviceID) {
 		libusb_exit(NULL);
 		return ERR_DEVICE_NOT_CONNECTED;
 	}
-
-    if (libusb_kernel_driver_active(handle, 1) == 1) {
-        int r = libusb_detach_kernel_driver(handle, 1);
-    }
 	int r = 1;
+    if (libusb_kernel_driver_active(handle, 1) == 1) {
+        r = libusb_detach_kernel_driver(handle, 1);
+    }
+
 	//Claim Interface 1 from the device
     r = libusb_claim_interface(handle, 1);
 	if (r < 0) {
@@ -282,8 +289,11 @@ uint32_t PTAPI PassThruOpen(void *pName, uint32_t *pDeviceID) {
 	return STATUS_NOERROR;
 
 out_deinit:
-	if (data_transfer)
-		libusb_free_transfer(data_transfer[0]);
+	for (uint8_t i = 0; i < ASYNC_TRANSFERS; i++) {
+		if (data_transfer[i])
+			libusb_free_transfer(data_transfer[i]);
+	}
+
 	return ERR_FAILED;
 }
 
@@ -295,7 +305,6 @@ uint32_t PTAPI PassThruClose(uint32_t DeviceID) {
 	if (!isOpen)
 		return ERR_INVALID_DEVICE_ID;
 
-	isOpen = false;
 	request_exit();
 	log_trace("PassThruClose");
 
@@ -526,8 +535,11 @@ uint32_t PTAPI PassThruStopPeriodicMsg(uint32_t ChannelID, uint32_t msgID) {
  */
 uint32_t PTAPI PassThruStartMsgFilter(uint32_t ChannelID, uint32_t FilterType, PASSTHRU_MSG *pMaskMsg,
 								  PASSTHRU_MSG *pPatternMsg, PASSTHRU_MSG *pFlowControlMsg, uint32_t *pFilterID) {
+	char msgMaskBuff[512] = {0};
+	char msgPatternBuff[512] = {0};
+
 	log_trace("PassThruStartMsgFilter: ChannelID: %lu, FilterType: %s, \n pMaskMsg: %s \n pPatternMsg: %s \n pFlowControlMsg: %s",
-			  ChannelID, translateFilterType(FilterType), parsemsg(pMaskMsg), parsemsg(pPatternMsg), parsemsg(pFlowControlMsg));
+			  ChannelID, translateFilterType(FilterType), parsemsgb(pMaskMsg, msgMaskBuff), parsemsgb(pPatternMsg, msgPatternBuff), parsemsg(pFlowControlMsg));
 	if (!isOpen)
 		return ERR_INVALID_DEVICE_ID;
 

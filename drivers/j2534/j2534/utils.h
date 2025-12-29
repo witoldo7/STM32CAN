@@ -163,6 +163,7 @@ bool deQueue(PASSTHRU_MSG* msg);
 void clearQueue(void);
 uint32_t sizeQueue(void);
 char* parsemsg(PASSTHRU_MSG *msg);
+char* parsemsgb(PASSTHRU_MSG* msg, char* buff);
 void check_debug_log(void);
 void last_error(const char *fmt, ...);
 char* getLastError();
