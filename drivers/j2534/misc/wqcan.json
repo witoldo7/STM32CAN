@@ -1,8 +1,8 @@
 {
 	"CAN": true,
 	"ISO15765": true,
-	"ISO9141": false,
-	"ISO14230": false,
+	"ISO9141": true,
+	"ISO14230": true,
 	"SCI_A_TRANS": false,
 	"SCI_A_ENGINE": false,
 	"SCI_B_TRANS": false,

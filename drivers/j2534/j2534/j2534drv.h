@@ -40,7 +40,7 @@ J2534DLL_API uint32_t PTAPI	PassThruSetProgrammingVoltage(uint32_t DeviceID, uin
 J2534DLL_API uint32_t PTAPI	PassThruReadVersion(uint32_t DeviceID, char *pFirmwareVersion, char *pDllVersion, char *pApiVersion);
 J2534DLL_API uint32_t PTAPI	PassThruGetLastError(char *pErrorDescription);
 J2534DLL_API uint32_t PTAPI	PassThruIoctl(uint32_t ChannelID, uint32_t IoctlID, void *pInput, void *pOutput);
-
+//J2534DLL_API uint32_t PTAPI PassThruGetNextCarDAQ(char **name, unsigned long *version, char **addr);
 //
 // J2534-1 v04.04 Function Typedefs
 // These function typedefs allow simpler use of the J2534 API by
@@ -64,6 +64,6 @@ typedef uint32_t (PTAPI *PTSETPROGRAMMINGVOLTAGE)(uint32_t DeviceID, uint32_t Pi
 typedef uint32_t (PTAPI *PTREADVERSION)(uint32_t DeviceID, char *pFirmwareVersion, char *pDllVersion, char *pApiVersion);
 typedef uint32_t (PTAPI *PTGETLASTERROR)(char *pErrorDescription);
 typedef uint32_t (PTAPI *PTIOCTL)(uint32_t ChannelID, uint32_t IoctlID, void *pInput, void *pOutput);
-
+//typedef uint32_t (PTAPI *PASSTRUGETNEXTCARDAQ)(char **name, unsigned long *version, char **addr);
 
 #endif /* J2534DRV_H_ */

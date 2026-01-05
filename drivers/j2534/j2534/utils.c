@@ -319,8 +319,20 @@ void convertPacketToPMSG(uint8_t *data, uint16_t len, PASSTHRU_MSG* pMsg) {
 		pMsg->RxStatus = (rxMsg->common.XTD ? CAN_29BIT_ID : 0) | TX_MSG_TYPE;
 		pMsg->TxFlags = 0;
 		break;
+	case ISO14230:
+	case ISO9141:
+	    uint8_t data_len;
+		uint16_t rx_status;
+	    memcpy(&rx_status, data+2, sizeof(rx_status));
+		memcpy(&data_len, data+4, sizeof(data_len));
+		pMsg->ProtocolID = protocol;
+		pMsg->DataSize = data_len;
+		pMsg->RxStatus = rx_status;
+		pMsg->ExtraDataIndex = 0;
+		memcpy(pMsg->Data, data + 5, data_len+1);
+	break;
 	default:
-		log_error("convertPacketToPMSG: not supported protocol: %s", translateProtocol(protocol));
+		log_error("convertPacketToPMSG: not supported protocol: %d (%s)", protocol, translateProtocol(protocol));
 		break;
 	}
 }

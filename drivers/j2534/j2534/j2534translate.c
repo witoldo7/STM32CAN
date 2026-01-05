@@ -125,6 +125,8 @@ char* translateParam(uint32_t param) {
 	case 0x00008025: return "SAMPLE_RESOLUTION";
 	case 0x00008026: return "INPUT_RANGE_LOW";
 	case 0x00008027: return "INPUT_RANGE_HIGH";
+	case DT_ISO_INIT_BAUD: return "DT_ISO_INIT_BAUD";
+	case DT_ISO_CHECKSUM_TYPE: return "DT_ISO_CHECKSUM_TYPE";
 	default: return "Unknown";
 	}
 }
@@ -148,6 +150,7 @@ char* translateIoctl(uint32_t ioctl) {
 	case 0x00008001: return "SW_CAN_NS";
 	case 0x00008002: return "SET_POLL_RESPONSE";
 	case 0x00008003: return "BECOME_MASTER";
+	case GET_DEVICE_INFO: return "GET_DEVICE_INFO";
 	default: return "Unknown";
 	}
 }
