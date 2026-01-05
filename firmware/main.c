@@ -64,7 +64,7 @@ int main(void) {
   chSysInit();
 
   sdStart(&SD1, &sercfg);
-  GlobalDebugChannel = (BaseSequentialStream *)&SD1;
+  GlobalDebugChannel = (BaseSequentialStream *)&SDU1;
 
   adcStart(&ADCD1, NULL);
 

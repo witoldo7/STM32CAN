@@ -10,6 +10,7 @@
 #include "j2534.h"
 #include "j2534can.h"
 #include "j2534kline.h"
+#include "debug.h"
 
 uint32_t handle_connect_default(void* conn) {(void)conn; return ERR_NOT_SUPPORTED;}
 uint32_t handle_disconnect_default(void* conn) {(void)conn; return ERR_NOT_SUPPORTED;}
@@ -17,6 +18,8 @@ uint32_t start_filter_default(void* conn, uint8_t* data, uint32_t* idx) {(void)c
 uint32_t stop_filter_default(void* conn, uint32_t idx) {(void)conn; (void)idx; return ERR_NOT_SUPPORTED;}
 uint32_t write_message_default(void* conn, uint32_t timeout, uint16_t len, uint8_t* data) {
   (void)conn; (void)timeout; (void)len; (void)data; return ERR_NOT_SUPPORTED;}
+uint32_t read_message_default(void* conn, uint32_t timeout, uint32_t msgNum, uint16_t len, uint8_t* data) {
+  (void)conn; (void)timeout; (void)msgNum; (void)len; (void)data; return ERR_NOT_SUPPORTED;}
 uint32_t start_periodic_default_msg(void* conn, uint8_t data) {(void)conn; (void)data; return ERR_NOT_SUPPORTED;}
 uint32_t stop_periodic_default_msg(void* conn, uint32_t msg) {(void)conn; (void)msg; return ERR_NOT_SUPPORTED;}
 uint32_t ioctl_clear_filters_default(void* conn) {(void)conn; return ERR_NOT_SUPPORTED;}
@@ -25,19 +28,19 @@ uint32_t ioctl_loopback_default(void* conn) {(void)conn; return ERR_NOT_SUPPORTE
 uint32_t ioctl_fast_init_default(void* conn, uint8_t* in, uint8_t* out) {(void)conn; (void)in; (void)out; return ERR_NOT_SUPPORTED;}
 uint32_t ioctl_five_baud_init_default(void* conn, uint8_t* in, uint8_t out) {(void)conn; (void)in; (void)out; return ERR_NOT_SUPPORTED;}
 
-static uint8_t retBuff[64] = { 0 };
+uint8_t retBuff[256] = { 0 };
 const j2534_protocol_cfg default_config = {
   .Loopback = 0,        // 0 - OFF, 1 - ON
   .NodeAddress = 0,     // N/A 0x00-0xFF
   .NetworkLine = 0,     // 0 - BUS_NORMAL, 1 - BUS_PLUS, 2 - BUS_MINUS
   .P1Min = 0,           // N/A
   .P1Max = 40,          // .5ms, 0x1-0xFFFF
-  .P2Min = 0,           // N/A
-  .P2Max = 0,           // N/A
+  .P2Min = 50,           //.5ms
+  .P2Max = 100,           // .5ms
   .P3Min = 110,         // .5ms per bit 110 -> 55ms 0x1-0xFFFF
-  .P3Max = 0,           // N/A
+  .P3Max = 10000,           // .5ms
   .P4Min = 10,          // .5ms 0x1-0xFFFF
-  .P4Max = 0,           // N/A
+  .P4Max = 40,           // .5ms
   .W0a = 300,           // 1ms 0x1-0xFFFF
   .W1a = 300,           // 1ms 0x1-0xFFFF
   .W2a = 20,            // 1ms 0x1-0xFFFF
@@ -77,17 +80,20 @@ const j2534_protocol_cfg default_config = {
   .AveragingMethod = 0,
   .SampleResolution = 0,
   .InputRangeLow = 0,
-  .InputRangeHigh = 0
+  .InputRangeHigh = 0,
+  .DtIsoInitBaud = 0,
+  .FtIsoChecksumType = 0
 };
 
-j2534_protocol_cfg hscan_pcfg = default_config;
-j2534_protocol_cfg swcan_pcfg = default_config;
-j2534_protocol_cfg kline_pcfg = default_config;
-j2534_protocol_cfg default_pcfg = default_config;
+static j2534_protocol_cfg hscan_pcfg = default_config;
+static j2534_protocol_cfg swcan_pcfg = default_config;
+static j2534_protocol_cfg kline_pcfg = default_config;
+static j2534_protocol_cfg default_pcfg = default_config;
 
 j2534_conn connHs = {
   .connect = (void*)&handle_connect_can,
   .disconnect = (void*)&handle_disconnect_can,
+  .read = (void*)&read_message_default,
   .write = (void*)&write_message_can,
   .start_filter = (void*)&start_filter_can,
   .stop_filter = (void*)&stop_filter_can,
@@ -102,6 +108,7 @@ j2534_conn connHs = {
 j2534_conn connSw = {
   .connect = (void*)&handle_connect_can,
   .disconnect = (void*)&handle_disconnect_can,
+  .read = (void*)&read_message_default,
   .write = (void*)&write_message_can,
   .start_filter = (void*)&start_filter_can,
   .stop_filter = (void*)&stop_filter_can,
@@ -116,6 +123,7 @@ j2534_conn connSw = {
 j2534_conn connKL = {
   .connect = (void*)&handle_connect_kline,
   .disconnect = (void*)&handle_disconnect_kline,
+  .read = (void*)&read_message_default,
   .write = (void*)&write_message_kline,
   .start_filter = (void*)&start_filter_kline,
   .stop_filter = (void*)&stop_filter_kline,
@@ -386,7 +394,15 @@ uint32_t handldle_get_config(j2534_conn* conn, SCONFIG_LIST* cfgList) {
     case FIVE_BAUD_MOD:
       cfg->Value = pcfg->FiveBaudMod;
       err = STATUS_NOERROR;
-    break;
+      break;
+    case DT_ISO_INIT_BAUD:
+      cfg->Value = pcfg->DtIsoInitBaud;
+      err = STATUS_NOERROR;
+      break;
+    case DT_ISO_CHECKSUM_TYPE:
+      cfg->Value = pcfg->FtIsoChecksumType;
+      err = STATUS_NOERROR;
+      break;
     default:
       break;
     }
@@ -528,7 +544,15 @@ uint32_t handldle_set_config(j2534_conn* conn, SCONFIG_LIST* cfgList) {
     case FIVE_BAUD_MOD:
       pcfg->FiveBaudMod = cfg->Value;
       err = STATUS_NOERROR;
-    break;
+      break;
+    case DT_ISO_INIT_BAUD:
+      pcfg->DtIsoInitBaud = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
+    case DT_ISO_CHECKSUM_TYPE:
+      pcfg->FtIsoChecksumType = cfg->Value;
+      err = STATUS_NOERROR;
+      break;
     default:
       break;
     }
@@ -537,6 +561,7 @@ uint32_t handldle_set_config(j2534_conn* conn, SCONFIG_LIST* cfgList) {
 }
 
 bool j2534_ioctl(packet_t *rx_packet, packet_t *tx_packet) {
+
   uint32_t channelID, ioctl, err = ERR_NOT_SUPPORTED;
   if(rx_packet->data_len < 8) {
     goto error;
@@ -578,7 +603,7 @@ bool j2534_ioctl(packet_t *rx_packet, packet_t *tx_packet) {
     break;
   case FIVE_BAUD_INIT:
   case FAST_INIT:
-    uint8_t f_out[8];
+    uint8_t f_out[10]= {0};
     if ((rx_packet->data_len - 8) < 5) {
       err = ERR_FAILED;
       goto error;
@@ -587,11 +612,14 @@ bool j2534_ioctl(packet_t *rx_packet, packet_t *tx_packet) {
       err = conn->ioctl_five_baud_init(conn, rx_packet->data + 8, f_out);
     } else {
       err = conn->ioctl_fast_init(conn, rx_packet->data + 8, f_out);
+       DBG_PRNT("fast init done \r\n");
     }
     if (err == STATUS_NOERROR) {
-      retSize += f_out[0];
-      memcpy(retBuff + 4, f_out, f_out[0]);
+      retSize += f_out[0]+1;
+      memcpy(retBuff + 4, f_out, f_out[0]+1);
+       DBG_PRNT("fast init len: %d, %02x, %02x, %02x, %02x\r\n", retSize, retBuff[5], retBuff[6], retBuff[7], retBuff[8]);
     }
+    //chThdSleepMilliseconds(50);
     break;
   case CLEAR_TX_BUFFER:
   case CLEAR_PERIODIC_MSGS:
@@ -624,6 +652,28 @@ bool j2534_write_message(packet_t *rx_packet, packet_t *tx_packet) {
   memcpy(retBuff, &err, 4);
   return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_term_ack);
 
+  error:
+    memcpy(retBuff, &err, 4);
+    return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_term_ack);
+}
+
+
+bool j2534_read_message(packet_t *rx_packet, packet_t *tx_packet) {
+  uint32_t channelID, timeout, msgNum, err = ERR_NOT_SUPPORTED;
+  uint16_t len = 0;
+  if(rx_packet->data_len < 4) {
+    goto error;
+  }
+  memcpy(&channelID, rx_packet->data, 4);
+  memcpy(&timeout, rx_packet->data + 4, 4);
+  memcpy(&msgNum, rx_packet->data + 8, 4);
+
+  j2534_conn* conn = get_connection(channelID);
+
+  err = conn->read(conn, timeout, msgNum, len, retBuff);
+  
+  return prepareReplyPacket(tx_packet, rx_packet, retBuff, len, cmd_term_ack);
+  
   error:
     memcpy(retBuff, &err, 4);
     return prepareReplyPacket(tx_packet, rx_packet, retBuff, 4, cmd_term_ack);
@@ -664,6 +714,7 @@ bool j2534_stop_periodic_message(packet_t *rx_packet, packet_t *tx_packet) {
 }
 
 bool exec_cmd_j2534(packet_t *rx_packet, packet_t *tx_packet) {
+  memset(retBuff, 0 ,256);
   switch (rx_packet->cmd_code) {
   case cmd_j2534_connect:
     return j2534_connect(rx_packet, tx_packet);
@@ -675,6 +726,8 @@ bool exec_cmd_j2534(packet_t *rx_packet, packet_t *tx_packet) {
     return j2534_start_filter(rx_packet, tx_packet);
   case cmd_j2534_stop_filter:
     return j2534_stop_filter(rx_packet, tx_packet);
+  case cmd_j2534_read_message:
+    return j2534_read_message(rx_packet, tx_packet);
   case cmd_j2534_write_message:
     return j2534_write_message(rx_packet, tx_packet);
   case cmd_j2534_start_periodic_message:

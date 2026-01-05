@@ -62,13 +62,15 @@ typedef struct {
   uint32_t SampleResolution;
   uint32_t InputRangeLow;
   uint32_t InputRangeHigh;
+  uint32_t DtIsoInitBaud;
+  uint32_t FtIsoChecksumType;
 } j2534_protocol_cfg;
 
 typedef struct {
   CANDriver* canp;
   CANConfig* canCfg;
-  uint32_t* cf_index;
-  CANFilter* filters;
+  uint32_t cf_index;
+  CANFilter filters[FILTER_NBR];
 } j2534_can_cfg;
 
 typedef struct {
@@ -80,6 +82,7 @@ typedef struct {
   uint32_t (*connect)(void*);
   uint32_t (*disconnect)(void*);
   uint32_t (*write)(void*, uint32_t, uint16_t, uint8_t*);
+  uint32_t (*read)(void*, uint32_t, uint32_t, uint16_t, uint8_t*);
   uint32_t (*start_filter)(void*, uint8_t*, uint32_t*);
   uint32_t (*stop_filter)(void*, uint32_t);
   uint32_t (*start_periodic_msg)(void*, uint8_t*);

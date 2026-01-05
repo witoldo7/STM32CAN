@@ -9,7 +9,7 @@
 #include "j2534can.h"
 #include "debug.h"
 
-static CANConfig hsCanConfig = {
+CANConfig hsCanConfig = {
   OPMODE_CAN,
   //OPMODE_FDCAN,                  /* OP MODE */
   0,                               /* NBTP */
@@ -19,34 +19,30 @@ static CANConfig hsCanConfig = {
   0,                               /* TEST */
   0                                /* GFC */
 };
-static uint32_t hs_cf_index = 0;
-static CANFilter hs_filters[FILTER_NBR] = {0};
 
 j2534_can_cfg canCfgHs = {
   .canp = &CAND1,
   .canCfg = &hsCanConfig,
-  .cf_index = &hs_cf_index,
-  .filters = hs_filters,
+  .cf_index = 0,
+  .filters = {{0}},
 };
 
-static CANConfig swCanConfig = {
+CANConfig swCanConfig = {
   OPMODE_CAN,
   //OPMODE_FDCAN,                  /* OP MODE */
   0,                               /* NBTP */
   0,                               /* DBTP */
   0,                               /* TDCR */
   0,                               /* CCCR */
-  0,                               /* TEST */
+  0,                               /* canp */
   0                                /* GFC */
 };
-static uint32_t sw_cf_index = 0;
-static CANFilter sw_filters[FILTER_NBR] = {0};
 
 j2534_can_cfg canCfgSw = {
   .canp = &CAND2,
   .canCfg = &swCanConfig,
-  .cf_index = &sw_cf_index,
-  .filters = sw_filters,
+  .cf_index = 0,
+  .filters = {{0}},
 };
 
 bool rx_hscan_msg(void *rxmsg, packet_t *packet) {
@@ -150,7 +146,6 @@ uint32_t handle_disconnect_can(j2534_conn* conn) {
 
 uint32_t start_filter_can(j2534_conn* conn, uint8_t* data, uint32_t* idx) {
   j2534_can_cfg *can = conn->cfg;
-  uint32_t cf_index = *can->cf_index;
   uint32_t pattern, mask, flags;
   uint8_t size = data[11], type = data[10];
   memcpy(&flags, data + 4, 4);
@@ -160,10 +155,10 @@ uint32_t start_filter_can(j2534_conn* conn, uint8_t* data, uint32_t* idx) {
   switch (type)
   {
   case PASS_FILTER:
-    can->filters[cf_index].filter_cfg = CAN_FILTER_CFG_FIFO_0;
+    can->filters[can->cf_index].filter_cfg = CAN_FILTER_CFG_FIFO_0;
     break;
   case BLOCK_FILTER:
-    can->filters[cf_index].filter_cfg = CAN_FILTER_CFG_REJECT;
+    can->filters[can->cf_index].filter_cfg = CAN_FILTER_CFG_REJECT;
     break;
   
   default:
@@ -172,23 +167,31 @@ uint32_t start_filter_can(j2534_conn* conn, uint8_t* data, uint32_t* idx) {
   }
   
   if(flags & CAN_29BIT_ID) {
-    can->filters[cf_index].filter_type = CAN_FILTER_TYPE_EXT;
+    can->filters[can->cf_index].filter_type = CAN_FILTER_TYPE_EXT;
   } else {
-    can->filters[cf_index].filter_type = CAN_FILTER_TYPE_STD;
+    can->filters[can->cf_index].filter_type = CAN_FILTER_TYPE_STD;
   }
-  can->filters[cf_index].filter_mode = CAN_FILTER_MODE_CLASSIC;
-  can->filters[cf_index].identifier1 = pattern;
-  can->filters[cf_index].identifier2 = mask;
-  *idx = cf_index++;
-  canSTM32SetFilters(can->canp, cf_index, can->filters);
+  can->filters[can->cf_index].filter_mode = CAN_FILTER_MODE_CLASSIC;
+  can->filters[can->cf_index].identifier1 = pattern;
+  can->filters[can->cf_index].identifier2 = mask;
+  DBG_PRNT("type: %d,  id: %x, mask %x idx: %d\r\n",  can->filters[can->cf_index].filter_cfg, can->filters[can->cf_index].identifier1, can->filters[can->cf_index].identifier2, can->cf_index);
+
+  *idx = can->cf_index++;
+  canSTM32SetFilters(can->canp, can->cf_index, can->filters);
   return STATUS_NOERROR;
 }
 
 uint32_t ioctl_clear_filters_can(j2534_conn* conn) {
   j2534_can_cfg *can = conn->cfg;
-  CANFilter filter[FILTER_NBR] = {0};
-  can->filters = filter;
-  *can->cf_index = 0;
+
+  for(uint8_t i = 0; i<FILTER_NBR; i++) {
+    can->filters[i].filter_cfg = 0;
+    can->filters[i].filter_type = 0;
+    can->filters[i].filter_mode = 0;
+    can->filters[i].identifier1 = 0;
+    can->filters[i].identifier2 = 0;
+  }
+  can->cf_index = 0;
   canSTM32SetFilters(can->canp, FILTER_NBR, can->filters);
 
   return STATUS_NOERROR;
