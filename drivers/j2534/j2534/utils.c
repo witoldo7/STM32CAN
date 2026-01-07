@@ -323,14 +323,17 @@ void convertPacketToPMSG(uint8_t *data, uint16_t len, PASSTHRU_MSG* pMsg) {
 	case ISO9141:
 	    uint8_t data_len;
 		uint16_t rx_status;
+		uint32_t timestamp;
 	    memcpy(&rx_status, data+2, sizeof(rx_status));
-		memcpy(&data_len, data+4, sizeof(data_len));
+		memcpy(&timestamp, data+4, sizeof(timestamp));
+		memcpy(&data_len, data+8, sizeof(data_len));
 		pMsg->ProtocolID = protocol;
 		pMsg->DataSize = data_len;
 		pMsg->RxStatus = rx_status;
+		pMsg->Timestamp = timestamp;
 		pMsg->ExtraDataIndex = 0;
-		memcpy(pMsg->Data, data + 5, data_len+1);
-	break;
+		memcpy(pMsg->Data, data + 9, data_len+1);
+		break;
 	default:
 		log_error("convertPacketToPMSG: not supported protocol: %d (%s)", protocol, translateProtocol(protocol));
 		break;
