@@ -33,12 +33,16 @@ const j2534_protocol_cfg default_config = {
   .Loopback = 0,        // 0 - OFF, 1 - ON
   .NodeAddress = 0,     // N/A 0x00-0xFF
   .NetworkLine = 0,     // 0 - BUS_NORMAL, 1 - BUS_PLUS, 2 - BUS_MINUS
+  /* P1 Inter byte time for ECU response */
   .P1Min = 0,           // N/A
   .P1Max = 40,          // .5ms, 0x1-0xFFFF
+  /* P2 Time between tester request and ECU response or two ECU responses */
   .P2Min = 50,           //.5ms
   .P2Max = 100,           // .5ms
+  /* P3 Time between end of ECU responses and start of new tester request */
   .P3Min = 110,         // .5ms per bit 110 -> 55ms 0x1-0xFFFF
   .P3Max = 10000,           // .5ms
+  /* P4 Inter byte time for tester request */
   .P4Min = 10,          // .5ms 0x1-0xFFFF
   .P4Max = 40,           // .5ms
   .W0a = 300,           // 1ms 0x1-0xFFFF
