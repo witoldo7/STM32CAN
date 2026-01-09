@@ -296,12 +296,12 @@ uint16_t covertPacketToBuffer(packet_t *packet, uint8_t *buffer) {
 void convertPacketToPMSG(uint8_t *data, uint16_t len, PASSTHRU_MSG* pMsg) {
 	uint16_t protocol = 0;
 	memcpy(&protocol, data, sizeof(protocol));
+	pMsg->ProtocolID = protocol;
 	switch (protocol) {
 	case CAN:
 	case CAN_PS:
 	case SW_CAN_PS:
 		CANRxFrame *rxMsg = (CANRxFrame*)(data+2);
-		pMsg->ProtocolID = protocol;
 		pMsg->DataSize = rxMsg->DLC + 4;
 		pMsg->ExtraDataIndex = 0;
 		uint32_t id = 0;
@@ -319,6 +319,15 @@ void convertPacketToPMSG(uint8_t *data, uint16_t len, PASSTHRU_MSG* pMsg) {
 		pMsg->RxStatus = (rxMsg->common.XTD ? CAN_29BIT_ID : 0) | TX_MSG_TYPE;
 		pMsg->TxFlags = 0;
 		break;
+	case ISO15765:
+	case SW_ISO15765_PS:
+		//protocol 2, datalen 2, datalenext 2, rxstatus 4, timestamp 4, buff[] var
+		memcpy(&pMsg->DataSize, data + 2, 2);
+		memcpy(&pMsg->ExtraDataIndex, data + 4, 2);
+		memcpy(&pMsg->RxStatus, data + 6, 4);
+		memcpy(&pMsg->Timestamp, data + 10, 4);
+		memcpy(&pMsg->Data, data + 14, pMsg->DataSize);
+		break;
 	case ISO14230:
 	case ISO9141:
 	    uint8_t data_len;
@@ -327,7 +336,6 @@ void convertPacketToPMSG(uint8_t *data, uint16_t len, PASSTHRU_MSG* pMsg) {
 	    memcpy(&rx_status, data+2, sizeof(rx_status));
 		memcpy(&timestamp, data+4, sizeof(timestamp));
 		memcpy(&data_len, data+8, sizeof(data_len));
-		pMsg->ProtocolID = protocol;
 		pMsg->DataSize = data_len;
 		pMsg->RxStatus = rx_status;
 		pMsg->Timestamp = timestamp;
@@ -338,6 +346,26 @@ void convertPacketToPMSG(uint8_t *data, uint16_t len, PASSTHRU_MSG* pMsg) {
 		log_error("convertPacketToPMSG: not supported protocol: %d (%s)", protocol, translateProtocol(protocol));
 		break;
 	}
+}
+
+bool PASSTHRU_MSG_To_ISO15765CANTxFrame(PASSTHRU_MSG *pMsg, CANTxFrame *canTx) {
+	bool xtd = (pMsg->TxFlags) & CAN_29BIT_ID;
+	canTx->common.XTD = xtd;
+	if (pMsg->DataSize < 4)
+		return false;
+	uint8_t data_size = pMsg->DataSize - 4;
+	uint32_t dlc = 8;
+	uint32_t id = data_size << 24 | pMsg->Data[1] << 16 | pMsg->Data[2] << 8 | pMsg->Data[3];
+
+	if (xtd) {
+		canTx->ext.EID = id & 0x1FFFFFFF;;
+	} else {
+		canTx->std.SID = id & 0x7FF;
+	}
+	canTx->DLC = dlc;
+	canTx->data8[0] = data_size;
+	memcpy(canTx->data8+1, pMsg->Data + 4, data_size);
+	return true;
 }
 
 bool PASSTHRU_MSG_To_CANTxFrame(PASSTHRU_MSG *pMsg, CANTxFrame *canTx) {

@@ -399,22 +399,7 @@ uint32_t PTAPI PassThruReadMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t
 	log_trace("PassThruReadMsgs: ChannelID:%lu, Timeout: %u msec, numMsg: %lu", ChannelID, Timeout, *pNumMsgs);
 	if (!isOpen)
 		return ERR_INVALID_DEVICE_ID;
-/*
-	uint8_t buff[16] = { 0 };
-	packet_t txPacket = {.data = buff, .cmd_code = cmd_j2534_read_message};
-	uint8_t offset = 0;
-	memcpy(buff, &ChannelID, sizeof(ChannelID));
-	offset += 4;
-	memcpy(buff + offset, &Timeout, sizeof(Timeout));
-	offset += 4;
-	memcpy(buff + offset, pNumMsgs, sizeof(uint32_t));
-	offset += 4;
-	txPacket.data_len = offset;
-	if (usb_send_packet(txPacket, WQCAN_TIMEOUT)) {
-		last_error("PassThruReadMsgs: Tx USB failed");
-		return ERR_FAILED;
-	}
-*/
+
 	uint32_t queueSize = sizeQueue();
 	if ((Timeout == 0) && (queueSize == 0)) {
 		*pNumMsgs = 0;
@@ -427,7 +412,7 @@ uint32_t PTAPI PassThruReadMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t
 	}
 
 	uint32_t err = ERR_NOT_SUPPORTED;
-	uint32_t tm = Timeout*100;
+	uint32_t tm = Timeout*10;
 	if (Timeout > 0) {
 		bool exit = false;
 		for (uint32_t i = 0; (i < tm) & !do_exit & !exit; i++) {
@@ -492,11 +477,17 @@ uint32_t PTAPI PassThruWriteMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_
 			case CAN:
 			case CAN_PS:
 			case SW_CAN_PS:
-			case ISO15765:
 				CANTxFrame tx = {0};
 				PASSTHRU_MSG_To_CANTxFrame(&pMsg[i], &tx);
 				memcpy(buff + offset, &tx, 8 + tx.DLC);
 				txPacket.data_len = offset + 8 + tx.DLC;
+				break;
+			case ISO15765:
+			case SW_ISO15765_PS:
+				CANTxFrame txi = {0};
+				PASSTHRU_MSG_To_ISO15765CANTxFrame(&pMsg[i], &txi);
+				memcpy(buff + offset, &txi, 8 + txi.DLC);
+				txPacket.data_len = offset + 8 + txi.DLC;
 				break;
 			case ISO14230:
 			case ISO9141:
@@ -584,8 +575,8 @@ uint32_t PTAPI PassThruStartMsgFilter(uint32_t ChannelID, uint32_t FilterType, P
 	}
 
 	uint32_t err = ERR_NOT_SUPPORTED;
-	uint8_t buff[48] = { 0 };
-	packet_t txPacket = {.data = buff, .cmd_code = cmd_j2534_filter, .data_len = 44};
+	uint8_t buff[60] = { 0 };
+	packet_t txPacket = {.data = buff, .cmd_code = cmd_j2534_filter, .data_len = 56};
 	uint32_t size = pMaskMsg->DataSize;
 	memcpy(buff, &ChannelID, sizeof(ChannelID));
 	memcpy(buff + 4, &pMaskMsg->TxFlags, 4);
@@ -596,6 +587,10 @@ uint32_t PTAPI PassThruStartMsgFilter(uint32_t ChannelID, uint32_t FilterType, P
 	for (uint8_t i = 0; i < size; i++) {
 		buff[12 + i] = pMaskMsg->Data[size - 1 - i];
 		buff[24 + i] = pPatternMsg->Data[size - 1 - i];
+		if (pFlowControlMsg != NULL)
+		{
+			buff[36 + i] = pFlowControlMsg->Data[size - 1 - i];
+		}	
 	}
 
 	if (usb_send_packet(txPacket, WQCAN_TIMEOUT)) {
