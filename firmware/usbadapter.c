@@ -507,7 +507,6 @@ THD_FUNCTION(cmdThd, arg) {
       case 0xA0:  //J2534 utility.
         ret = exec_cmd_j2534(&rx_packet, &tx_packet);
         break;
-        break;
       default:
         continue;
       }

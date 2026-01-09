@@ -22,31 +22,30 @@
 #define WQCAN_USB_EP_IN	    (LIBUSB_ENDPOINT_IN  | 2)   /* endpoint address */
 #define WQCAN_USB_EP_OUT    (LIBUSB_ENDPOINT_OUT | 2)   /* endpoint address */
 #define WQCAN_TIMEOUT	    100                         /* Connection timeout (in ms) */
+#define ASYNC_TRANSFERS     4
 
 static libusb_device_handle *handle;
-#define ASYNC_TRANSFERS 4
 static uint8_t databuf[ASYNC_TRANSFERS][128];
 static struct libusb_transfer *data_transfer[ASYNC_TRANSFERS] = {NULL};
+static bool isOpen = false;
 
 uint8_t data[32];
 packet_t tx_packet = {.data = data};
-
 uint8_t rspdata[128];
 packet_t resp_packet = {.data = rspdata};
-
-static bool isOpen = false;
-static volatile sig_atomic_t do_exit = 0;
-static semaphore_t wait_for_response_semaphore, wTxSem, txSem, rxSem;
-semaphore_t slock;
-static thread_t poll_thread;
-static uint32_t rx_counter=0;
-static uint32_t tx_counter=0;
+sig_atomic_t do_exit = 0;
+semaphore_t wait_for_response_semaphore, wTxSem, txSem, rxSem, slock;
+thread_t poll_thread;
+uint32_t rx_counter=0;
+uint32_t tx_counter=0;
+libusb_transfer_cb_fn transfer[4] = {NULL};
 
 static void request_exit() {
 	int r;
 	do_exit = 1;
-	for (uint8_t i = 0; i < ASYNC_TRANSFERS; i++)
+	for (uint8_t i = 0; i < ASYNC_TRANSFERS; i++) {
 		libusb_cancel_transfer(data_transfer[i]);
+	}
 	semaphore_destroy(wait_for_response_semaphore);
 	semaphore_destroy(rxSem);
 	semaphore_destroy(txSem);
@@ -61,6 +60,11 @@ static void request_exit() {
 	if (handle)
 		libusb_close(handle);
 	libusb_exit(NULL);
+	handle = NULL;
+	for (uint8_t i = 0; i < ASYNC_TRANSFERS; i++) {
+		data_transfer[i] = NULL;
+	}
+	isOpen = false;
 }
 
 #if defined(_MSC_VER)
@@ -111,7 +115,7 @@ static void setup_signals(void) {
 
 static void LIBUSB_CALL cb_process(struct libusb_transfer *transfer, struct libusb_transfer *data) {
 	if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
-		log_error("transfer status: %d", transfer->status);
+		log_warn("transfer status: %d", transfer->status);
 		goto err_free_transfer;
 	}
 
@@ -123,7 +127,7 @@ static void LIBUSB_CALL cb_process(struct libusb_transfer *transfer, struct libu
 			goto err_free_transfer;
 		return;
 	}
-
+    //log_trace("usb_recv_packet cmd: %02x", transfer->buffer[0]);
 	switch (transfer->buffer[0]) {
 	case cmd_j2534_connect:
 	case cmd_j2534_disconnect:
@@ -161,7 +165,7 @@ static void LIBUSB_CALL cb_process(struct libusb_transfer *transfer, struct libu
 	return;
 
 err_free_transfer:
-	log_error("err_free_transfer");
+	log_warn("free_transfer");
 	if (data != NULL) {
 		libusb_free_transfer(data);
 		data = NULL;
@@ -181,9 +185,11 @@ static void LIBUSB_CALL cb_data3(struct libusb_transfer *transfer) {
 	cb_process(transfer, data_transfer[3]);
 }
 
-libusb_transfer_cb_fn transfer[4] = {cb_data, cb_data1, cb_data2, cb_data3};
-
 static int alloc_transfers(void) {
+	transfer[0] = cb_data;
+	transfer[1] = cb_data1;
+	transfer[2] = cb_data2;
+	transfer[3] = cb_data3;
 	for (uint8_t i = 0; i < ASYNC_TRANSFERS; i++) {
 		data_transfer[i] = libusb_alloc_transfer(0);
 		if (!data_transfer) {
@@ -203,6 +209,7 @@ static int usb_send_packet(packet_t packet, unsigned int timeout) {
 	uint16_t len = covertPacketToBuffer(&packet, buff);
 	if (len > 0) {
 		r = libusb_bulk_transfer(handle, WQCAN_USB_EP_OUT, buff, (int)len, &bytes_written, 0);
+		//log_trace("usb_send_packet cmd: %02x", buff[0]);
 	}
 	if (r != LIBUSB_SUCCESS) {
 		last_error("USB data transfer error sending %d bytes: %s", (int)len, libusb_error_name(r));
@@ -220,7 +227,7 @@ uint32_t PTAPI PassThruOpen(void *pName, uint32_t *pDeviceID) {
 		return STATUS_NOERROR;
 	}
 	check_debug_log();
-
+    do_exit = 0;
 	log_trace("PassThruOpen: Device Name: %s, ID: %lu", (char*)pName, *pDeviceID);
 	libusb_init(NULL);
 //  libusb_set_option(NULL, LIBUSB_OPTION_LOG_LEVEL, 4);
@@ -232,11 +239,11 @@ uint32_t PTAPI PassThruOpen(void *pName, uint32_t *pDeviceID) {
 		libusb_exit(NULL);
 		return ERR_DEVICE_NOT_CONNECTED;
 	}
-
-    if (libusb_kernel_driver_active(handle, 1) == 1) {
-        int r = libusb_detach_kernel_driver(handle, 1);
-    }
 	int r = 1;
+    if (libusb_kernel_driver_active(handle, 1) == 1) {
+        r = libusb_detach_kernel_driver(handle, 1);
+    }
+
 	//Claim Interface 1 from the device
     r = libusb_claim_interface(handle, 1);
 	if (r < 0) {
@@ -282,8 +289,11 @@ uint32_t PTAPI PassThruOpen(void *pName, uint32_t *pDeviceID) {
 	return STATUS_NOERROR;
 
 out_deinit:
-	if (data_transfer)
-		libusb_free_transfer(data_transfer[0]);
+	for (uint8_t i = 0; i < ASYNC_TRANSFERS; i++) {
+		if (data_transfer[i])
+			libusb_free_transfer(data_transfer[i]);
+	}
+
 	return ERR_FAILED;
 }
 
@@ -295,7 +305,6 @@ uint32_t PTAPI PassThruClose(uint32_t DeviceID) {
 	if (!isOpen)
 		return ERR_INVALID_DEVICE_ID;
 
-	isOpen = false;
 	request_exit();
 	log_trace("PassThruClose");
 
@@ -403,7 +412,7 @@ uint32_t PTAPI PassThruReadMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t
 	}
 
 	uint32_t err = ERR_NOT_SUPPORTED;
-	uint32_t tm = Timeout*100;
+	uint32_t tm = Timeout*10;
 	if (Timeout > 0) {
 		bool exit = false;
 		for (uint32_t i = 0; (i < tm) & !do_exit & !exit; i++) {
@@ -468,13 +477,23 @@ uint32_t PTAPI PassThruWriteMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_
 			case CAN:
 			case CAN_PS:
 			case SW_CAN_PS:
-			case ISO15765:
 				CANTxFrame tx = {0};
 				PASSTHRU_MSG_To_CANTxFrame(&pMsg[i], &tx);
 				memcpy(buff + offset, &tx, 8 + tx.DLC);
 				txPacket.data_len = offset + 8 + tx.DLC;
 				break;
-
+			case ISO15765:
+			case SW_ISO15765_PS:
+				CANTxFrame txi = {0};
+				PASSTHRU_MSG_To_ISO15765CANTxFrame(&pMsg[i], &txi);
+				memcpy(buff + offset, &txi, 8 + txi.DLC);
+				txPacket.data_len = offset + 8 + txi.DLC;
+				break;
+			case ISO14230:
+			case ISO9141:
+				memcpy(buff + offset, &pMsg[i].Data, pMsg[i].DataSize);
+				txPacket.data_len = offset + pMsg[i].DataSize;
+				break;
 			default:
 				break;
 		}
@@ -526,8 +545,11 @@ uint32_t PTAPI PassThruStopPeriodicMsg(uint32_t ChannelID, uint32_t msgID) {
  */
 uint32_t PTAPI PassThruStartMsgFilter(uint32_t ChannelID, uint32_t FilterType, PASSTHRU_MSG *pMaskMsg,
 								  PASSTHRU_MSG *pPatternMsg, PASSTHRU_MSG *pFlowControlMsg, uint32_t *pFilterID) {
+	char msgMaskBuff[512] = {0};
+	char msgPatternBuff[512] = {0};
+
 	log_trace("PassThruStartMsgFilter: ChannelID: %lu, FilterType: %s, \n pMaskMsg: %s \n pPatternMsg: %s \n pFlowControlMsg: %s",
-			  ChannelID, translateFilterType(FilterType), parsemsg(pMaskMsg), parsemsg(pPatternMsg), parsemsg(pFlowControlMsg));
+			  ChannelID, translateFilterType(FilterType), parsemsgb(pMaskMsg, msgMaskBuff), parsemsgb(pPatternMsg, msgPatternBuff), parsemsg(pFlowControlMsg));
 	if (!isOpen)
 		return ERR_INVALID_DEVICE_ID;
 
@@ -553,8 +575,8 @@ uint32_t PTAPI PassThruStartMsgFilter(uint32_t ChannelID, uint32_t FilterType, P
 	}
 
 	uint32_t err = ERR_NOT_SUPPORTED;
-	uint8_t buff[48] = { 0 };
-	packet_t txPacket = {.data = buff, .cmd_code = cmd_j2534_filter, .data_len = 44};
+	uint8_t buff[60] = { 0 };
+	packet_t txPacket = {.data = buff, .cmd_code = cmd_j2534_filter, .data_len = 56};
 	uint32_t size = pMaskMsg->DataSize;
 	memcpy(buff, &ChannelID, sizeof(ChannelID));
 	memcpy(buff + 4, &pMaskMsg->TxFlags, 4);
@@ -565,6 +587,10 @@ uint32_t PTAPI PassThruStartMsgFilter(uint32_t ChannelID, uint32_t FilterType, P
 	for (uint8_t i = 0; i < size; i++) {
 		buff[12 + i] = pMaskMsg->Data[size - 1 - i];
 		buff[24 + i] = pPatternMsg->Data[size - 1 - i];
+		if (pFlowControlMsg != NULL)
+		{
+			buff[36 + i] = pFlowControlMsg->Data[size - 1 - i];
+		}	
 	}
 
 	if (usb_send_packet(txPacket, WQCAN_TIMEOUT)) {
@@ -691,7 +717,7 @@ uint32_t PTAPI PassThruGetLastError(char *pErrorDescription) {
  * baud rates, programming voltages, etc.).
  */
 uint32_t PTAPI PassThruIoctl(uint32_t ChannelID, uint32_t ioctlID, void *pInput, void *pOutput) {
-	log_trace("PassThruIoctl ChannelID: %lu, ioctlID: %s", ChannelID, translateIoctl(ioctlID));
+	log_trace("PassThruIoctl ChannelID: %lu, ioctlID: %x ( %s ) ", ChannelID, ioctlID, translateIoctl(ioctlID));
 	if (!isOpen)
 		return ERR_INVALID_DEVICE_ID;
 
@@ -726,7 +752,7 @@ uint32_t PTAPI PassThruIoctl(uint32_t ChannelID, uint32_t ioctlID, void *pInput,
 			if (err != STATUS_NOERROR) {
 				for (uint8_t i = 0; i < inputlist->NumOfParams; i++) {
 					SCONFIG* cfg = &inputlist->ConfigPtr[i];
-					log_trace("GET_CONFIG: num: %d, parameter: %s", i, translateParam(cfg->Parameter));
+					log_trace("GET_CONFIG: num: %d, parameter: %x ( %s )", i, cfg->Parameter, translateParam(cfg->Parameter));
 				}
 				log_trace("Received only error: %x", err);
 				return err;
@@ -826,6 +852,7 @@ uint32_t PTAPI PassThruIoctl(uint32_t ChannelID, uint32_t ioctlID, void *pInput,
 		}
 		case FAST_INIT:
 			const PASSTHRU_MSG* initMSG = pInput;
+			log_trace("%s", parsemsg(pInput));
 			uint8_t dataSize = (uint8_t)initMSG->DataSize;
 			memcpy(buff + offset, &dataSize, 1);
 			offset += 1;
@@ -841,14 +868,18 @@ uint32_t PTAPI PassThruIoctl(uint32_t ChannelID, uint32_t ioctlID, void *pInput,
 				semaphore_take(wait_for_response_semaphore);
 
 			memcpy(&err, resp_packet.data, sizeof(err));
-			if (resp_packet.data_len < 5)
-				return err;
+			if (resp_packet.data_len < 5) {
+				log_trace("resp len: %d\r\n", resp_packet.data_len);
+				break;
+			}
 
 			PASSTHRU_MSG msg = {0};
 			msg.ProtocolID = initMSG->ProtocolID;
 			msg.DataSize = resp_packet.data[4];
 			memcpy(msg.Data, resp_packet.data + 5, msg.DataSize);
 			*(PASSTHRU_MSG*)pOutput = msg;
+			log_trace("%s", parsemsg(&msg));
+			clearQueue();
 			break;
 		case CLEAR_PERIODIC_MSGS:
 		case CLEAR_FUNCT_MSG_LOOKUP_TABLE:
@@ -857,9 +888,40 @@ uint32_t PTAPI PassThruIoctl(uint32_t ChannelID, uint32_t ioctlID, void *pInput,
 		case READ_PROG_VOLTAGE:
 			last_error("PassThruIoctl ioctlID: %s is not implemented", translateIoctl(ioctlID));
 			break;
+		case GET_DEVICE_INFO:
+		    SPARAM_LIST* paramList = pOutput;
+			log_trace("PassThruIoctl GET_DEVICE_INFO: param_num %d, param %x", paramList->NumOfParams, paramList->SParamPtr[0].Parameter);
+			err = STATUS_NOERROR;
+			switch (paramList->SParamPtr[0].Parameter) {
+			case SERIAL_NUMBER:
+				paramList->SParamPtr[0].Value = 12121212;
+				paramList->SParamPtr[0].Supported = 1;
+				break;
+			case SHORT_TO_GND_J1962:
+				paramList->SParamPtr[0].Value = 0xF;
+				paramList->SParamPtr[0].Supported = 1;
+				break;
+			case PGM_VOLTAGE_J1962:
+				paramList->SParamPtr[0].Value = 0xF;
+				paramList->SParamPtr[0].Supported = 1;
+				break;
+			default:
+				err = ERR_NOT_SUPPORTED;
+				break;
+			}
+
+			break;
+			
 		default:
 			last_error("PassThruIoctl, unknown ioctlID: 0x%X", ioctlID);
 	}
 	log_trace("PassThruIoctl err: %s", translateError(err));
 	return err;
+}
+
+uint32_t PTAPI PassThruGetNextCarDAQ(char **name, unsigned long *version, char **addr) {
+	*name = "WQCAN";
+	*version = 2323;
+	addr = NULL;
+	return STATUS_NOERROR;
 }

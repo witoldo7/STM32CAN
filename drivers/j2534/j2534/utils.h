@@ -163,10 +163,12 @@ bool deQueue(PASSTHRU_MSG* msg);
 void clearQueue(void);
 uint32_t sizeQueue(void);
 char* parsemsg(PASSTHRU_MSG *msg);
+char* parsemsgb(PASSTHRU_MSG* msg, char* buff);
 void check_debug_log(void);
 void last_error(const char *fmt, ...);
 char* getLastError();
 uint16_t covertPacketToBuffer(packet_t *packet, uint8_t *buffer);
 void convertPacketToPMSG(uint8_t* data, uint16_t len, PASSTHRU_MSG* pMsg);
 bool PASSTHRU_MSG_To_CANTxFrame(PASSTHRU_MSG *pMsg, CANTxFrame *canTx);
+bool PASSTHRU_MSG_To_ISO15765CANTxFrame(PASSTHRU_MSG *pMsg, CANTxFrame *canTx);
 #endif // __UTILS_H

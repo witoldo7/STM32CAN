@@ -23,6 +23,10 @@ enum term_command_t {
   cmd_term_nack = 0xFF
 };
 
+static inline uint16_t min(uint16_t a, uint16_t b) {
+    return (a < b) ? a : b;
+}
+
 void swab(uint16_t *word);
 uint16_t getSupplyVoltage(void);
 void get_vbat(uint8_t *vbat);

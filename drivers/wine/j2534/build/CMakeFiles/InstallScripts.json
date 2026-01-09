@@ -1,0 +1,8 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/witold/workspace_j2534/STM32F4-Combi/drivers/wine/j2534/build/cmake_install.cmake",
+		"/home/witold/workspace_j2534/STM32F4-Combi/drivers/wine/j2534/build/j2534/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

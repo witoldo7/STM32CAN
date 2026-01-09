@@ -7,7 +7,7 @@
  * This driver is inspired by the net/can/usb/mcba_usb.c
  */
 
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <linux/can.h>
 #include <linux/can/dev.h>
 #include <linux/can/error.h>
@@ -613,6 +613,19 @@ static void wqcan_usb_xmit_change_filter(struct wqcan_priv *priv)
 	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
 }
 
+static void wqcan_usb_xmit_change_filter_sw(struct wqcan_priv *priv)
+{
+	struct wqcan_usb_msg_can_filter usb_msg = {
+		.cmd_id = WQCAN_CMD_SWCAN_FILTER,
+		.term = 0
+	};
+	put_unaligned_be16(1, &usb_msg.len);
+
+	put_unaligned_be32(0, &usb_msg.filter);
+
+	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
+}
+
 static void wqcan_usb_xmit_read_fw_ver(struct wqcan_priv *priv)
 {
 	struct wqcan_usb_msg_fw_ver usb_msg = {
@@ -977,6 +990,7 @@ static int wqcan_usb_open_sw(struct net_device *netdev)
 	struct wqcan_priv *priv = netdev_priv(netdev);
 	int err;
 	wqcan_usb_can_open_sw(priv);
+	wqcan_usb_xmit_change_filter_sw(priv);
 
 	/* common open */
 	err = open_candev(netdev);
@@ -1097,7 +1111,7 @@ static int wqcan_net_set_bittiming(struct net_device *netdev)
 static int wqcan_net_set_data_bittiming(struct net_device *netdev)
 {
 	struct wqcan_priv *priv = netdev_priv(netdev);
-	const struct can_bittiming *dbt = &priv->can.data_bittiming;
+	const struct can_bittiming *dbt = &priv->can.fd.data_bittiming;
 	u16 brp, sjw, tseg1, tseg2;
 	u32 reg_btp, reg_tdcr;
 	u8 cmd = 1;
@@ -1205,11 +1219,11 @@ static int wqcan_usb_probe(struct usb_interface *intf,
 	/* Init HSCAN device */
 	priv->can.state = CAN_STATE_STOPPED;
 	priv->can.bittiming_const = &wqcan_can_fd_bit_timing_max;
-	priv->can.data_bittiming_const = &wqcan_can_fd_bit_timing_data_max;
+	priv->can.fd.data_bittiming_const = &wqcan_can_fd_bit_timing_data_max;
 	priv->can.do_set_mode = wqcan_net_set_mode;
 	priv->can.do_get_berr_counter = wqcan_net_get_berr_counter;
 	priv->can.do_set_bittiming = wqcan_net_set_bittiming;
-	priv->can.do_set_data_bittiming = wqcan_net_set_data_bittiming;
+	priv->can.fd.do_set_data_bittiming = wqcan_net_set_data_bittiming;
 	priv->can.clock.freq = 80000000;
 	priv->can.ctrlmode_supported = CAN_CTRLMODE_LOOPBACK
 					| CAN_CTRLMODE_LISTENONLY
