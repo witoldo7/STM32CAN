@@ -1,0 +1,6 @@
+# Generated from j2534drv.dll by winedump.
+MODULE    = j2534drv.dll
+
+
+C_SRCS = \
+	j2534drv_main.c

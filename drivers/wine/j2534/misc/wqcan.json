@@ -1,0 +1,16 @@
+{
+	"CAN": true,
+	"ISO15765": true,
+	"ISO9141": true,
+	"ISO14230": true,
+	"SCI_A_TRANS": false,
+	"SCI_A_ENGINE": false,
+	"SCI_B_TRANS": false,
+	"SCI_B_ENGINE" : false,
+	"J1850VPW" : false,
+	"J1850PWM" : false,
+	"SW_CAN_PS" : true,
+	"FUNCTION_LIB": "~/.passthru/libj2534drv.so",
+	"NAME": "J2534",
+	"VENDOR": "WQCAN"
+}

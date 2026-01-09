@@ -1,0 +1,1 @@
+/usr/bin/cc -fPIC -shared -Wl,-soname,libj2534drv.so -o libj2534drv.so CMakeFiles/j2534drv.dir/j2534drv.c.o CMakeFiles/j2534drv.dir/j2534translate.c.o CMakeFiles/j2534drv.dir/log.c.o CMakeFiles/j2534drv.dir/utils.c.o  /usr/lib/libusb-1.0.so 
