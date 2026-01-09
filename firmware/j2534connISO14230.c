@@ -2,17 +2,17 @@
 
 /*
  * STM32CAN Firmware.
- * Copyright (c) 2023 Witold Olechowski
+ * Copyright (c) 2025 Witold Olechowski
  */
+#include <string.h>
 #include "hal.h"
 #include "j2534.h"
-#include "j2534kline.h"
-#include <string.h>
+#include "j2534connISO14230.h"
 #include "debug.h"
 #include "usbadapter.h"
 
 #define TESTER_WA_SIZE THD_WORKING_AREA_SIZE(512)
-thread_t* testertp = NULL;
+thread_t *testertp = NULL;
 static mutex_t j2534_mtx;
 
 SerialConfig uart2Cfg = {
@@ -276,14 +276,14 @@ uint32_t start_filter_kline(j2534_conn *conn, uint8_t *data, uint32_t *idx)
   return STATUS_NOERROR;
 }
 
-//TODO: timeout, remove ABS mock, check if p3max expire on retry send msg
+// TODO: timeout, remove ABS mock, check if p3max expire on retry send msg
 uint32_t write_message_kline(j2534_conn *conn, uint32_t timeout, uint16_t len, uint8_t *data)
 {
   (void)timeout;
   uint8_t rlen = len, resplen = 0;
   uint8_t buff[256] = {0};
 
-  //Mock saab 9-5 abs responces----------To be removed---------------
+  // Mock saab 9-5 abs responces----------To be removed---------------
   if (data[1] == 0x28 && data[6] == 0x35)
   {
     // 80, 28, F1, 02, 1A, 80, 35,
@@ -322,7 +322,7 @@ uint32_t write_message_kline(j2534_conn *conn, uint32_t timeout, uint16_t len, u
     chThdSleepMilliseconds(100);
     return STATUS_NOERROR;
   }
-  //Mock abs responces-------------------------
+  // Mock abs responces-------------------------
 
   if (!kwp_session.session_active)
   {
@@ -448,7 +448,7 @@ uint32_t ioctl_loopback_kline(j2534_conn *conn)
  */
 uint32_t ioctl_fast_init_kline(j2534_conn *conn, uint8_t *in, uint8_t *response)
 {
-  //Mock saab 9-5 abs fast init------------To be removed-------------
+  // Mock saab 9-5 abs fast init------------To be removed-------------
   if (in[2] == 0x28)
   {
     uint8_t abs[8] = {7, 0x83, 0xF1, 0x28, 0xC1, 0x6B, 0x8F, 0x57};
@@ -456,7 +456,7 @@ uint32_t ioctl_fast_init_kline(j2534_conn *conn, uint8_t *in, uint8_t *response)
     chThdSleepMilliseconds(200);
     return STATUS_NOERROR;
   }
-  //end of mock saab 9-5 abs fast init-------------------------
+  // end of mock saab 9-5 abs fast init-------------------------
 
   j2534_protocol_cfg *pcfg = conn->pcfg;
   if (kwp_session.session_active)

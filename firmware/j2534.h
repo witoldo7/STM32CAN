@@ -13,7 +13,8 @@
 #include "j2534def.h"
 #define FILTER_NBR 16
 
-typedef struct {
+typedef struct
+{
   uint32_t Loopback;
   uint32_t NodeAddress;
   uint32_t NetworkLine;
@@ -66,32 +67,35 @@ typedef struct {
   uint32_t FtIsoChecksumType;
 } j2534_protocol_cfg;
 
-typedef struct {
-  CANDriver* canp;
-  CANConfig* canCfg;
+typedef struct
+{
+  CANDriver *canp;
+  CANConfig *canCfg;
   uint32_t cf_index;
   CANFilter filters[FILTER_NBR];
+  uint32_t flow[FILTER_NBR];
 } j2534_can_cfg;
 
-typedef struct {
+typedef struct
+{
   uint32_t protocol;
   uint32_t flags;
   uint32_t DataRate;
-  j2534_protocol_cfg* pcfg;
-  void* cfg;
-  uint32_t (*connect)(void*);
-  uint32_t (*disconnect)(void*);
-  uint32_t (*write)(void*, uint32_t, uint16_t, uint8_t*);
-  uint32_t (*read)(void*, uint32_t, uint32_t, uint16_t, uint8_t*);
-  uint32_t (*start_filter)(void*, uint8_t*, uint32_t*);
-  uint32_t (*stop_filter)(void*, uint32_t);
-  uint32_t (*start_periodic_msg)(void*, uint8_t*);
-  uint32_t (*stop_periodic_msg)(void*, uint32_t);
-  uint32_t (*ioctl_lopback)(void*);
-  uint32_t (*ioctl_datarate)(void*);
-  uint32_t (*ioctl_clear_filters)(void*);
-  uint32_t (*ioctl_five_baud_init)(void*, uint8_t*, uint8_t*);
-  uint32_t (*ioctl_fast_init)(void*, uint8_t*, uint8_t*);
+  j2534_protocol_cfg *pcfg;
+  void *cfg;
+  uint32_t (*connect)(void *);
+  uint32_t (*disconnect)(void *);
+  uint32_t (*write)(void *, uint32_t, uint16_t, uint8_t *);
+  uint32_t (*read)(void *, uint32_t, uint32_t, uint16_t, uint8_t *);
+  uint32_t (*start_filter)(void *, uint8_t *, uint32_t *);
+  uint32_t (*stop_filter)(void *, uint32_t);
+  uint32_t (*start_periodic_msg)(void *, uint8_t *);
+  uint32_t (*stop_periodic_msg)(void *, uint32_t);
+  uint32_t (*ioctl_lopback)(void *);
+  uint32_t (*ioctl_datarate)(void *);
+  uint32_t (*ioctl_clear_filters)(void *);
+  uint32_t (*ioctl_five_baud_init)(void *, uint8_t *, uint8_t *);
+  uint32_t (*ioctl_fast_init)(void *, uint8_t *, uint8_t *);
   bool isConnected;
 } j2534_conn;
 

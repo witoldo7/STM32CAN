@@ -10,7 +10,7 @@
 
 #include "chprintf.h"
 
-extern BaseSequentialStream   *GlobalDebugChannel;
+extern BaseSequentialStream *GlobalDebugChannel;
 
 #if !defined(DEBUG_TRACE_PRINT)
 #define DEBUG_PRINT     FALSE

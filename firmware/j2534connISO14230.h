@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /*
- * STM32kline Firmware.
- * Copyright (c) 2023 Witold Olechowski
+ * STM32CAN Firmware.
+ * Copyright (c) 2025 Witold Olechowski
  */
 
-#ifndef J2534KLINE_H_
-#define J2534KLINE_H_
+#ifndef J2534CONNISO14230_H_
+#define J2534CONNISO14230_H_
 
 #define ISO14230_SHORTHDR 0x01
 #define ISO14230_LONGHDR 0x2
@@ -59,4 +59,4 @@ uint32_t ioctl_loopback_kline(j2534_conn *conn);
 uint32_t ioctl_fast_init_kline(j2534_conn *conn, uint8_t *in, uint8_t *out);
 uint32_t ioctl_five_baud_init_kline(j2534_conn *conn, uint8_t *in, uint8_t *out);
 
-#endif /* J2534KLINE_H_ */
+#endif /* J2534CONNISO14230_H_ */

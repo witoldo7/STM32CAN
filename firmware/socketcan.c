@@ -45,7 +45,8 @@ static CANConfig canConfig2 = {
  * data[8] - DLC
  * data[9:9+DLC] - data
  */
-bool socketcan_rx_can_cb(void *msg, packet_t *packet) {
+bool socketcan_rx_can_cb(void* conn, void *msg, packet_t *packet) {
+  (void)conn;
   CANRxFrame *rxmsg = (CANRxFrame*) msg;
   if (rxmsg->common.XTD) {
     packet->data[0] = rxmsg->ext.EID & 0xFF;
@@ -69,7 +70,8 @@ bool socketcan_rx_can_cb(void *msg, packet_t *packet) {
   return true;
 }
 
-bool socketcan_rx_swcan_cb(void *msg, packet_t *packet) {
+bool socketcan_rx_swcan_cb(void* conn, void *msg, packet_t *packet) {
+  (void)conn;
   CANRxFrame *rxmsg = (CANRxFrame*) msg;
   if (rxmsg->common.XTD) {
     packet->data[0] = rxmsg->ext.EID & 0xFF;
@@ -94,10 +96,10 @@ bool socketcan_connectHs(packet_t *rx_packet, packet_t *tx_packet) {
   switch (rx_packet->data[0]) {
   case 0:
     canStop(&CAND1);
-    registerHsCanCallback(NULL);
+    registerHsCanCallback(NULL, NULL);
     break;
   case 2:
-    registerHsCanCallback(&socketcan_rx_can_cb);
+    registerHsCanCallback(&socketcan_rx_can_cb, NULL);
     uint32_t mode = rx_packet->data[4] | (uint32_t)rx_packet->data[1] << 24 | (uint32_t)rx_packet->data[2] << 16
         | (uint32_t)rx_packet->data[3] << 8;
     /* NISO support */
@@ -143,10 +145,10 @@ bool socketcan_connectSw(packet_t *rx_packet, packet_t *tx_packet) {
   switch (rx_packet->data[0]) {
   case 0:
     canStop(&CAND2);
-    registerSwCanCallback(NULL);
+    registerSwCanCallback(NULL, NULL);
     break;
   case 1:
-    registerSwCanCallback(&socketcan_rx_swcan_cb);
+    registerSwCanCallback(&socketcan_rx_swcan_cb, NULL);
     uint32_t mode = rx_packet->data[4] | (uint32_t)rx_packet->data[1] << 24 | (uint32_t)rx_packet->data[2] << 16
                  | (uint32_t)rx_packet->data[3] << 8;
 

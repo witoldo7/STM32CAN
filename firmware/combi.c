@@ -65,7 +65,8 @@ static CANFilter filters[FILTER_SIZE] = {
 },
 };
 
-bool combi_rx_can_cb(void *msg, packet_t *packet) {
+bool combi_rx_can_cb(void* conn, void *msg, packet_t *packet) {
+  (void)conn;
   CANRxFrame *rxmsg = (CANRxFrame*) msg;
   if (rxmsg->common.XTD) {
     packet->data[0] = rxmsg->ext.EID & 0xFF;
@@ -94,10 +95,10 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
     switch (rx_packet->data[0]) {
     case combi_close:
       canStop(&CAND1);
-      registerHsCanCallback(NULL);
+      registerHsCanCallback(NULL, NULL);
       break;
     case combi_open:
-      registerHsCanCallback(&combi_rx_can_cb);
+      registerHsCanCallback(&combi_rx_can_cb, NULL);
       canGlobalFilter(&canConfig1, FDCAN_REJECT, FDCAN_REJECT, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
       canStart(&CAND1, &canConfig1);
       canSTM32SetFilters(&CAND1, FILTER_SIZE, filters);
