@@ -72,3 +72,23 @@ Frame can be send by:
 ```sh
 cansend can0 123\#1122334455667788
 ```
+# HW filtering
+Filters can be configured by /sys interface.
+GFC usage: nms=0..2 nme=0..2 rrs=0/1 rre=0/1
+Filter usage:id1=ID1h id2=ID2h type=0..1 mode=0..2 cfg=1..3 idx=0..9
+
+Exampple
+```sh
+# echo "id1=7e8 id2=ffff type=0 mode=2 cfg=1 idx=0" > /sys/devices/pci0000:00/0000:00:08.1/0000:05:00.3/usb1/1-3/1-3:1.1/net/can0/filters
+# echo "id1=5e8 id2=ffff type=0 mode=2 cfg=1 idx=1" > /sys/devices/pci0000:00/0000:00:08.1/0000:05:00.3/usb1/1-3/1-3:1.1/net/can0/filters
+# echo "nms=2 nme=2 rrs=0 rre=0" > /sys/devices/pci0000:00/0000:00:08.1/0000:05:00.3/usb1/1-3/1-3:1.1/net/can0/gfc_cfg                   
+
+# cat /sys/devices/pci0000:00/0000:00:08.1/0000:05:00.3/usb1/1-3/1-3:1.1/net/can0/filters 
+Filters:
+0. id1:0x7e8, id2:0xffff, type:0, mode:2, cfg:1
+1. id1:0x5e8, id2:0xffff, type:0, mode:2, cfg:1
+
+# cat /sys/devices/pci0000:00/0000:00:08.1/0000:05:00.3/usb1/1-3/1-3:1.1/net/can0/gfc_cfg 
+Global filter: NonMatchingStd: 2, NonMatchingExt: 2, RejectRemoteStd: 0 RejectRemoteExt: 0 
+
+```
