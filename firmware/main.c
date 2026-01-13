@@ -23,7 +23,8 @@ BaseSequentialStream *GlobalDebugChannel;
 thread_t *hscantp = NULL;
 thread_t *swcantp = NULL;
 thread_t *shelltp = NULL;
-thread_t *usbtp = NULL;
+thread_t *usbrxtp = NULL;
+thread_t *usbtxtp = NULL;
 thread_t *cmdtp = NULL;
 
 static const ShellCommand commands[] = {
@@ -94,11 +95,15 @@ int main(void) {
                                        shellThread, (void *)&shell_cfg1);
     }
 
-    if (!usbtp && SDU1.config->usbp->state == USB_ACTIVE) {
-      usbtp = chThdCreateFromHeap(NULL, USB_WA_SIZE, "usbThd", NORMALPRIO + 2, usbThd_rx, NULL);
+    if (!usbrxtp && USBD1.state == USB_ACTIVE) {
+      usbrxtp = chThdCreateFromHeap(NULL, USB_WA_SIZE, "usbThdRx", NORMALPRIO + 2, usbThd_rx, NULL);
     }
 
-    if (!cmdtp && SDU1.config->usbp->state == USB_ACTIVE) {
+    if (!usbtxtp && USBD1.state == USB_ACTIVE) {
+      usbtxtp = chThdCreateFromHeap(NULL, USB_WA_SIZE, "usbThdTx", NORMALPRIO + 2, usbThd_tx, NULL);
+    }
+
+    if (!cmdtp && USBD1.state == USB_ACTIVE) {
       cmdtp = chThdCreateFromHeap(NULL, CMD_WA_SIZE, "cmdThd", NORMALPRIO + 1, cmdThd, NULL);
     }
 
@@ -107,7 +112,7 @@ int main(void) {
     }
 
     if (!hscantp) {
-      hscantp = chThdCreateFromHeap(NULL, HSCAN_WA_SIZE, "hscan receiver", NORMALPRIO + 4, hscan_rx, NULL);
+      hscantp = chThdCreateFromHeap(NULL, HSCAN_WA_SIZE, "hscan receiver", HIGHPRIO, hscan_rx, NULL);
     }
 
     chEvtDispatch(evhndl, chEvtWaitOneTimeout(EVENT_MASK(0), TIME_MS2I(500)));

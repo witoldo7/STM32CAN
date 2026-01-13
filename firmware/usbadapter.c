@@ -12,23 +12,29 @@
 #include "socketcan.h"
 #include "bdmutility.h"
 #include <string.h>
+#include "debug.h"
 
 #define CHUNK_INTERVAL_FS 0x00 /* 0x19 - 25ms for packet of 10 data reads (USB 2.0 FS) */
 #define INT_PACKETSIZE  0x10
 #define CDC_PACKETSIZE  0x40
 #define EP_INT_CDC 1
 #define EP_CDC 3
+#define IN_PACKETSIZE  0x40
+#define OUT_PACKETSIZE 0x40
+#define EP_IN 2
+#define EP_OUT 2
 
 static semaphore_t rxSem;
 static semaphore_t processSem;
 
-uint8_t receiveBuf[OUT_PACKETSIZE*2];
-uint8_t transferBuf[IN_PACKETSIZE*2];
-
-static uint8_t rxdata[300], txdata[300];
+static uint8_t receiveBuf[OUT_PACKETSIZE*2];
+__attribute__((__section__(".ram1"))) __attribute__((aligned (32))) static uint8_t rxdata[4224], txdata[4224];
 static packet_t rx_packet = {.data = rxdata};
 static packet_t tx_packet = {.data = txdata};
 
+#define MB_SIZE 16
+static msg_t mb_buffer[MB_SIZE];
+static mailbox_t usbTxMb;
 /*
  * Virtual serial ports over USB.
  */
@@ -44,6 +50,8 @@ static USBInEndpointState ep2instate;
 static USBOutEndpointState ep2outstate;
 static USBInEndpointState ep3instate;
 static USBOutEndpointState ep3outstate;
+
+static mutex_t send_mtx, queue_mtx;
 
 /*
  * Serial over USB driver configuration 1.
@@ -361,7 +369,6 @@ bool combiConfigureHookI(USBDriver *usbp) {
   return false;
 }
 
-
 /*
  * Handles the USB driver global events.
  */
@@ -387,17 +394,16 @@ void dataTransmitted(USBDriver *usbp, usbep_t ep) {
   osalSysUnlockFromISR();
 }
 
-void usb_send(USBDriver *usbp, usbep_t ep, const uint8_t *buf, size_t n) {
+void usb_send(usb_packet *usbp) {
+  chMtxLock(&send_mtx);
+  is_transmiting = true;
+  osalSysLock();
+  usbStartTransmitI(&USBD1, EP_IN, usbp->data, usbp->size);
+  osalSysUnlock();
   while (is_transmiting) {
     __asm("nop");
   }
-  while(!(usbp->state == USB_ACTIVE)) {
-    __asm("nop");
-  }
-  osalSysLock();
-  is_transmiting = true;
-  usbStartTransmitI(usbp, ep, buf, n);
-  osalSysUnlock();
+  chMtxUnlock(&send_mtx);
 }
 
 bool start_receive(USBDriver *usbp, usbep_t ep, uint8_t *buf, size_t n) {
@@ -427,11 +433,30 @@ void dataReceived(USBDriver *usbp, usbep_t ep) {
   chSysUnlockFromISR();
 }
 
+THD_FUNCTION(usbThd_tx, arg) {
+  (void)arg;
+  chRegSetThreadName("usbWriter");
+  msg_t msg;
+
+  while (TRUE) {
+    if (chMBFetchTimeout(&usbTxMb, &msg, TIME_MS2I(500)) == MSG_OK) {
+      usb_packet *packet = (usb_packet *)msg;
+      //DBG_PRNT("fetchMB len %d, cmd %x\r\n", packet->size, packet->data[0]);
+      usb_send(packet);
+      chHeapFree(packet);
+    }
+  }
+}
+
 THD_FUNCTION(usbThd_rx, arg) {
   (void)arg;
   chRegSetThreadName("usbReceiver");
   chSemObjectInit(&rxSem, 1);
   chSemObjectInit(&processSem, 1);
+  chMtxObjectInit(&send_mtx);
+  chMtxObjectInit(&queue_mtx);
+  chMBObjectInit(&usbTxMb, mb_buffer, MB_SIZE);
+
   bool is_completed = true;
   uint16_t cur_pos = 0;
   uint16_t len = 0;
@@ -447,9 +472,6 @@ THD_FUNCTION(usbThd_rx, arg) {
     if (is_completed) {
       rx_packet.cmd_code = receiveBuf[0];
       len = (uint16_t)((receiveBuf[1] & 0xffffU) << 8) | (uint16_t)receiveBuf[2];
-      if (len > 255) {
-        continue;
-      }
       rx_packet.data_len = len;
       memcpy(rx_packet.data, receiveBuf + 3, rec_size);
       cur_pos += rec_size;
@@ -486,7 +508,6 @@ THD_FUNCTION(usbThd_rx, arg) {
 THD_FUNCTION(cmdThd, arg) {
   (void)arg;
   bool ret = false;
-  uint8_t size = 0;
   chRegSetThreadName("command processor");
   while (TRUE) {
     chSemWait(&processSem);
@@ -513,10 +534,35 @@ THD_FUNCTION(cmdThd, arg) {
       if (ret != true) {
         prepareReplyPacket(&tx_packet, &rx_packet, 0, 0, cmd_term_nack);
       }
-
-      size = covertPacketToBuffer(&tx_packet, transferBuf);
-      usb_send(&USBD1, EP_IN, transferBuf, size);
+      addUsbMsgToMailbox(&tx_packet);
     }
   }
 }
 
+void covertPacketToUsbPacket(packet_t *packet, usb_packet *usbp) {
+  usbp->data[0] = packet->cmd_code;
+  usbp->data[1] = (uint8_t)(packet->data_len >> 8);
+  usbp->data[2] = (uint8_t)packet->data_len;
+  if (packet->data_len != 0) {
+    memcpy(usbp->data + 3, packet->data, packet->data_len);
+    usbp->size = packet->data_len + 3;
+    usbp->data[usbp->size] = packet->term;
+    usbp->size++;
+  }
+  else {
+    usbp->data[3] = packet->term;
+    usbp->size = 4;
+  }
+}
+
+void addUsbMsgToMailbox(packet_t *packet) {
+  usb_packet *usbreplay = chHeapAlloc(NULL, packet->data_len+6);
+
+  if (usbreplay != NULL) {
+    covertPacketToUsbPacket(packet, usbreplay);
+    if (chMBPostTimeout(&usbTxMb, (msg_t)usbreplay, TIME_IMMEDIATE) != MSG_OK) {
+      DBG_PRNT("postMB timeout \r\n");
+      chHeapFree(usbreplay);
+    }
+  }
+}

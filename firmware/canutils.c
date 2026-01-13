@@ -180,8 +180,6 @@ THD_FUNCTION(hscan_rx, p)
   }
   event_listener_t el;
   static CANRxFrame rxmsg = {};
-  static uint8_t size = 0;
-  static uint8_t buffer[80] = {0};
   static uint8_t canbuff[66] = {0};
   packet_t tx_packet = {.cmd_code = cmd_j2534_read_message, .data = canbuff, .term = cmd_term_ack};
   chEvtRegister(&CAND1.rxfull_event, &el, 0);
@@ -198,8 +196,8 @@ THD_FUNCTION(hscan_rx, p)
         continue;
       if (!hscan_rx_cb(hsconn, &rxmsg, &tx_packet))
         continue;
-      size = covertPacketToBuffer(&tx_packet, buffer);
-      usb_send(&USBD1, EP_IN, buffer, size);
+
+      addUsbMsgToMailbox(&tx_packet);
     }
   }
   chEvtUnregister(&CAND1.rxfull_event, &el);
@@ -213,8 +211,6 @@ THD_FUNCTION(swcan_rx, p)
   }
   event_listener_t el;
   CANRxFrame rxmsg = {};
-  uint8_t size = 0;
-  uint8_t buffer[80] = {0};
   uint8_t packetbuff[66] = {0};
   packet_t tx_packet = {.cmd_code = cmd_j2534_read_message, .data = packetbuff, .term = cmd_term_ack};
   chEvtRegister(&CAND2.rxfull_event, &el, 0);
@@ -231,8 +227,8 @@ THD_FUNCTION(swcan_rx, p)
         continue;
       if (!swcan_rx_cb(swconn, &rxmsg, &tx_packet))
         continue;
-      size = covertPacketToBuffer(&tx_packet, buffer);
-      usb_send(&USBD1, EP_IN, buffer, size);
+
+    addUsbMsgToMailbox(&tx_packet);
     }
   }
   chEvtUnregister(&CAND2.rxfull_event, &el);

@@ -53,12 +53,10 @@ bool kline_msg(uint8_t *buff, uint8_t len, packet_t *packet, uint16_t rx_status,
 
 void snedPacket(uint8_t *buff, uint8_t len, uint16_t rx_status, uint32_t timestamp)
 {
-  static uint8_t buffer[300] = {0};
   static uint8_t pbuffer[270] = {0};
   packet_t tx_packet = {.cmd_code = cmd_j2534_read_message, .data = pbuffer, .term = cmd_term_ack};
   kline_msg(buff, len, &tx_packet, rx_status, timestamp);
-  size_t size = covertPacketToBuffer(&tx_packet, buffer);
-  usb_send(&USBD1, EP_IN, buffer, size);
+  addUsbMsgToMailbox(&tx_packet);
 }
 
 void printKWPmsg(kwp_msg *msg)

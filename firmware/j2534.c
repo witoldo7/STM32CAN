@@ -15,7 +15,8 @@
 #include "j2534connDefault.h"
 #include "debug.h"
 
-uint8_t retBuff[256] = {0};
+//__attribute__((__section__(".ram1"))) __attribute__((aligned (32))) 
+uint8_t retBuff[4200] = {0};
 const j2534_protocol_cfg default_config = {
     .Loopback = 0,    // 0 - OFF, 1 - ON
     .NodeAddress = 0, // N/A 0x00-0xFF

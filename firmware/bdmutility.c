@@ -199,8 +199,8 @@ bool readflash(LONG start_addr, LONG size) {
     buf_ptr = buf_ptr + 1;
     curr_addr = curr_addr + 2;
     if (((curr_addr - start_addr) & 0xff) == 0) {
-      buffsize = covertPacketToBuffer(&tx_packet, buffer);
-      usb_send(&USBD1, EP_IN, buffer, buffsize);
+      //buffsize = covertPacketToBuffer(&tx_packet, buffer);
+      //usb_send(buffer, buffsize);
       buf_ptr = (WORD*)flash_buf;
     }
   }
@@ -217,7 +217,7 @@ bool writeflash(char *flash_type, LONG start_addr, LONG size) {
   uint32_t bytes_written;
   bool (*reset_func)(void);
   bool (*flash_func)(const uint32_t*, uint16_t);
-  uint8_t buffer[IN_PACKETSIZE] = {0};
+  uint8_t buffer[128] = {0};
   uint8_t buffsize = 0;
 
   if (strncmp(flash_type, "29f010", 6) == 0 || strncmp(flash_type, "29f400", 6) == 0) {
@@ -246,8 +246,8 @@ bool writeflash(char *flash_type, LONG start_addr, LONG size) {
   tx_packet.data_len = 0;
   tx_packet.data = (BYTE*)0x0;
   tx_packet.term = cmd_term_ack;
-  buffsize = covertPacketToBuffer(&tx_packet, buffer);
-  usb_send(&USBD1, EP_IN, buffer, buffsize);
+ // buffsize = covertPacketToBuffer(&tx_packet, buffer);
+  //usb_send(buffer, buffsize);
 
   rx_packet.data = flash_buf;
   bytes_written = 0;
@@ -277,8 +277,8 @@ bool writeflash(char *flash_type, LONG start_addr, LONG size) {
       curr_addr = curr_addr + 2;
     }
     bytes_written = bytes_written + 0x100;
-    buffsize = covertPacketToBuffer(&tx_packet, buffer);
-    usb_send(&USBD1, EP_IN, buffer, buffsize);
+    //buffsize = covertPacketToBuffer(&tx_packet, buffer);
+    //usb_send(buffer, buffsize);
   } while (status == true);
 
   // reset flash

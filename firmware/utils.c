@@ -9,6 +9,7 @@
 #include <utils.h>
 #include "hal.h"
 #include "string.h"
+#include "debug.h"
 
 //------------------------ADC-BEGIN-------------------------
 
@@ -89,23 +90,3 @@ bool prepareReplyPacket(packet_t *reply, packet_t *source, uint8_t *data,
   reply->term = term;
   return true;
 }
-
-uint8_t covertPacketToBuffer(packet_t *packet, uint8_t *buffer) {
-  uint8_t size = 0;
-  buffer[0] = packet->cmd_code;
-  buffer[1] = (uint8_t)(packet->data_len >> 8);
-  buffer[2] = (uint8_t)packet->data_len;
-  if (packet->data_len != 0) {
-    memcpy(buffer + 3, packet->data, packet->data_len);
-    size = packet->data_len + 3;
-    buffer[size] = packet->term;
-    size++;
-  }
-  else {
-    buffer[3] = packet->term;
-    size = 4;
-  }
-  return size;
-}
-
-

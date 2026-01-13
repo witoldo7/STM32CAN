@@ -84,10 +84,8 @@ void buildPacket(j2534_conn *conn, packet_t *packet, uint32_t rxstatus, uint32_t
 void sendPacketUsb(j2534_conn *conn, packet_t *packet, uint32_t rxstatus, uint32_t timestamp,
                    uint16_t data_len, uint16_t data_ext_len, uint8_t *data)
 {
-    uint8_t ubuff[40] = {0};
     buildPacket(conn, packet, rxstatus, timestamp, data_len, data_ext_len, data);
-    size_t size = covertPacketToBuffer(packet, ubuff);
-    usb_send(&USBD1, EP_IN, ubuff, size);
+    addUsbMsgToMailbox(packet);
 }
 
 void recv_single_frame(j2534_conn *conn, CANRxFrame *msg, packet_t *packet)
@@ -168,7 +166,8 @@ bool recv_consecutive_frame(j2534_conn *conn, CANRxFrame *msg, packet_t *packet)
     rx_frame_count++;
     if (rxPayload.payloadPos >= rxPayload.payloadSize)
     {
-        buildPacket(conn, packet, 0, msg->RXTS, rxPayload.payloadSize, rxPayload.payloadSize, rxPayload.payload);
+        uint32_t rxstatus = (msg->common.XTD ? CAN_29BIT_ID : 0);
+        buildPacket(conn, packet, rxstatus, msg->RXTS, rxPayload.payloadSize, rxPayload.payloadSize, rxPayload.payload);
         return true;
     }
     if (rx_frame_count >= 8)
@@ -306,31 +305,76 @@ uint32_t handle_disconnect_ISO15765(j2534_conn *conn)
 
 uint32_t write_message_ISO15765(j2534_conn *conn, uint32_t timeout, uint16_t len, uint8_t *data)
 {
-    // todo rework message
     uint32_t err = ERR_NOT_SUPPORTED;
     if (len < 8)
     {
-        return err;
+        return ERR_INVALID_MSG;
     }
-    CANTxFrame *tx = (CANTxFrame *)data;
     j2534_can_cfg *can = conn->cfg;
-    DBG_PRNT("write: len %d, id: %x data: ", tx->DLC, tx->std.SID);
-    for (uint8_t i = 0; i < tx->DLC; i++)
+
+    // data: txflags 4, len 2, lenext 2, data[]
+    uint32_t txflags, id;
+    uint16_t dlen, dlenExt;
+    CANTxFrame tx = {0};
+    memcpy(&txflags, data, 4);
+    memcpy(&dlen, data + 4, 2);
+    memcpy(&dlenExt, data + 6, 2);
+    uint8_t *canData = data + 8;
+
+    bool xtd = txflags & CAN_29BIT_ID;
+    tx.common.XTD = xtd;
+    if (dlen < 4)
+        return ERR_INVALID_MSG;
+    uint8_t data_size = dlen - 4;
+
+    if (data_size <= 11)
     {
-        DBG_PRNT("%02x, ", tx->data8[i]);
+        id = data_size << 24 | canData[1] << 16 | canData[2] << 8 | canData[3];
+        tx.data8[0] = data_size;
+        memcpy(tx.data8 + 1, canData + 4, data_size);
+    }
+    else
+    {
+        id = canData[0] << 24 | canData[1] << 16 | canData[2] << 8 | canData[3];
+        tx.data8[0] = 0x10 | ((data_size - 4) & 0x0F00) >> 8;
+        tx.data8[1] = (data_size - 4) & 0xFF;
+        memcpy(tx.data8 + 2, canData + 4, 6);
+
+        txPayload.payloadSize = data_size;
+        txPayload.payloadPos = 10;
+        memcpy(txPayload.payload, canData, data_size);
+    }
+
+    if (xtd)
+    {
+        tx.ext.EID = id;
+    }
+    else
+    {
+        tx.std.SID = id;
+    }
+    tx.DLC = 8;
+
+    DBG_PRNT("write: len %d, id: %x data: ", tx.DLC, tx.std.SID);
+    for (uint8_t i = 0; i < tx.DLC; i++)
+    {
+        DBG_PRNT("%02x, ", tx.data8[i]);
     }
     DBG_PRNT("\r\n");
-    if (canTransmit(can->canp, CAN_ANY_MAILBOX, tx, TIME_MS2I(timeout)) == MSG_OK)
+    if (canTransmit(can->canp, CAN_ANY_MAILBOX, &tx, TIME_MS2I(timeout)) == MSG_OK)
     {
+        if (data_size > 11)
+        { // TXDONE after end of multiframe
+            return STATUS_NOERROR;
+        }
         uint8_t buff[32] = {0};
-
         packet_t packet = {.cmd_code = cmd_j2534_read_message, .data = buff, .term = cmd_term_ack};
         uint32_t flags = TX_MSG_TYPE | TX_INDICATION;
         uint32_t mid;
-        if (tx->common.XTD)
-            mid = tx->ext.EID & 0x1FFFFFFF;
+        if (tx.common.XTD)
+            mid = tx.ext.EID;
         else
-            mid = tx->std.SID & 0x7FF;
+            mid = tx.std.SID;
         uint8_t idbuff[4] = {(uint8_t)(mid >> 24), (uint8_t)(mid >> 16), (uint8_t)(mid >> 8), (uint8_t)mid};
         sendPacketUsb(conn, &packet, flags, 0, 4, 0, idbuff);
 
