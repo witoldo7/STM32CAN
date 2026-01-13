@@ -11,7 +11,7 @@
 #include "utils.h"
 #include "canutils.h"
 
-static CANConfig canConfig1 = {
+CANConfig canConfig1 = {
   OPMODE_CAN,//OPMODE_FDCAN,       /* OP MODE */
   0,                               /* NBTP */
   0,                               /* DBTP */
@@ -21,7 +21,7 @@ static CANConfig canConfig1 = {
   0                                /* GFC */
 };
 
-static CANConfig canConfig2 = {
+CANConfig canConfig2 = {
   OPMODE_CAN,//OPMODE_FDCAN,       /* OP MODE */
   0,                               /* NBTP */
   0,                               /* DBTP */
@@ -31,6 +31,8 @@ static CANConfig canConfig2 = {
   0                                /* GFC */
 };
 
+CANFilter filters[10] = {0};
+uint8_t filter_size = 0;
 /* data[0:3] - SID or EID
  * data[4]
  *    b0 - XTD
@@ -134,6 +136,7 @@ bool socketcan_connectHs(packet_t *rx_packet, packet_t *tx_packet) {
       canConfig1.CCCR |= FDCAN_CCCR_DAR;
     }
     canStart(&CAND1, &canConfig1);
+    canSTM32SetFilters(&CAND1, filter_size, filters);
     break;
  default:
    return false;
@@ -264,13 +267,27 @@ bool socketcan_bitrateSw(packet_t *rx_packet, packet_t *tx_packet) {
   return false;
 }
 bool socketcan_filterHs(packet_t *rx_packet, packet_t *tx_packet) {
-  if (rx_packet->data_len != 0)  {
-    if ((rx_packet->data_len == 1) && (rx_packet->data[0] == 0)) {
+  switch(rx_packet->data[0]) {
+    case 0: //pass all
       canStop(&CAND1);
       canGlobalFilter(&canConfig1, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
-      canStart(&CAND1, &canConfig1);;
-    }
+      canStart(&CAND1, &canConfig1);
+    break;
+    case 1: //set filter
+      CANFilter filter = {.filter_type = rx_packet->data[2], .filter_mode = rx_packet->data[3], .filter_cfg = rx_packet->data[4]};
+      memcpy(&filter.identifier1, rx_packet->data+5, 4);
+      memcpy(&filter.identifier2, rx_packet->data+9, 4);
+      uint8_t idx = rx_packet->data[1];
+      filters[idx] = filter;
+      canSTM32SetFilters(&CAND1, ++filter_size, filters);
+    break;
+    case 2: //gfc
+      canGlobalFilter(&canConfig1, (uint32_t)rx_packet->data[1], (uint32_t)rx_packet->data[2], (uint32_t)rx_packet->data[3], (uint32_t)rx_packet->data[4]);
+    break;
+    default:
+      return false;
   }
+
   return prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
 }
 
