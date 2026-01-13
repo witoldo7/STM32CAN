@@ -39,10 +39,6 @@ void sleep_us(int usec) {
     ts.tv_sec = 0;// milliseconds / 1000;
     ts.tv_nsec = 1000 * usec;// milliseconds* 1000;//1000000;
     nanosleep(&ts, NULL);
-#else
-    if (milliseconds >= 1000)
-      sleep(milliseconds / 1000);
-    usleep((milliseconds % 1000) * 1000);
 #endif
 }
 
@@ -174,7 +170,6 @@ void Unlock(semaphore_t sem, uint32_t counter) {
 		semaphore_give(sem);
 	}
 }
-
 
 void enQueue(PASSTHRU_MSG msg) {
 	LockRx();
@@ -330,10 +325,10 @@ void convertPacketToPMSG(uint8_t *data, uint16_t len, PASSTHRU_MSG* pMsg) {
 		break;
 	case ISO14230:
 	case ISO9141:
-	    uint8_t data_len;
+		uint8_t data_len;
 		uint16_t rx_status;
 		uint32_t timestamp;
-	    memcpy(&rx_status, data+2, sizeof(rx_status));
+		memcpy(&rx_status, data+2, sizeof(rx_status));
 		memcpy(&timestamp, data+4, sizeof(timestamp));
 		memcpy(&data_len, data+8, sizeof(data_len));
 		pMsg->DataSize = data_len;
@@ -346,26 +341,6 @@ void convertPacketToPMSG(uint8_t *data, uint16_t len, PASSTHRU_MSG* pMsg) {
 		log_error("convertPacketToPMSG: not supported protocol: %d (%s)", protocol, translateProtocol(protocol));
 		break;
 	}
-}
-
-bool PASSTHRU_MSG_To_ISO15765CANTxFrame(PASSTHRU_MSG *pMsg, CANTxFrame *canTx) {
-	bool xtd = (pMsg->TxFlags) & CAN_29BIT_ID;
-	canTx->common.XTD = xtd;
-	if (pMsg->DataSize < 4)
-		return false;
-	uint8_t data_size = pMsg->DataSize - 4;
-	uint32_t dlc = 8;
-	uint32_t id = data_size << 24 | pMsg->Data[1] << 16 | pMsg->Data[2] << 8 | pMsg->Data[3];
-
-	if (xtd) {
-		canTx->ext.EID = id & 0x1FFFFFFF;;
-	} else {
-		canTx->std.SID = id & 0x7FF;
-	}
-	canTx->DLC = dlc;
-	canTx->data8[0] = data_size;
-	memcpy(canTx->data8+1, pMsg->Data + 4, data_size);
-	return true;
 }
 
 bool PASSTHRU_MSG_To_CANTxFrame(PASSTHRU_MSG *pMsg, CANTxFrame *canTx) {

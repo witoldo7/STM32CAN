@@ -412,11 +412,10 @@ uint32_t PTAPI PassThruReadMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_t
 	}
 
 	uint32_t err = ERR_NOT_SUPPORTED;
-	uint32_t tm = Timeout*10;
+	uint32_t tm = Timeout*100;
 	if (Timeout > 0) {
 		bool exit = false;
 		for (uint32_t i = 0; (i < tm) & !do_exit & !exit; i++) {
-		//while(!do_exit & !exit) {
 			queueSize = sizeQueue();
 			if ((*pNumMsgs == 0) && (queueSize > 0)) {
 				exit = true;
@@ -464,7 +463,7 @@ uint32_t PTAPI PassThruWriteMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_
 		return ERR_EXCEEDED_LIMIT;
 
 	uint32_t err = ERR_NOT_SUPPORTED;
-	uint8_t buff[100] = { 0 };
+	uint8_t buff[4200] = { 0 };
 	packet_t txPacket = {.data = buff, .cmd_code = cmd_j2534_write_message};
 	uint8_t offset = 0;
 	memcpy(buff, &ChannelID, sizeof(ChannelID));
@@ -484,10 +483,15 @@ uint32_t PTAPI PassThruWriteMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_
 				break;
 			case ISO15765:
 			case SW_ISO15765_PS:
-				CANTxFrame txi = {0};
-				PASSTHRU_MSG_To_ISO15765CANTxFrame(&pMsg[i], &txi);
-				memcpy(buff + offset, &txi, 8 + txi.DLC);
-				txPacket.data_len = offset + 8 + txi.DLC;
+				//data: txflags 4, len 2, lenext 2, data[]		
+				memcpy(buff + offset, &pMsg[i].TxFlags, 4);
+				offset +=4;
+				memcpy(buff + offset, &pMsg[i].DataSize, 2);
+				offset +=2;
+				memcpy(buff + offset, &pMsg[i].ExtraDataIndex, 2);
+				offset +=2;
+				memcpy(buff + offset, &pMsg[i].Data, pMsg[i].DataSize);
+				txPacket.data_len = offset + pMsg[i].DataSize;
 				break;
 			case ISO14230:
 			case ISO9141:
@@ -506,7 +510,6 @@ uint32_t PTAPI PassThruWriteMsgs(uint32_t ChannelID, PASSTHRU_MSG *pMsg, uint32_
 		if(semaphore_take_timeout(wTxSem, 1000) == -1) {
 			return ERR_TIMEOUT;
 		}
-		sleep_us(150);
 
 		memcpy(&err, tx_packet.data, sizeof(err));
 	}
