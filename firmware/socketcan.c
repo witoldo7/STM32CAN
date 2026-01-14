@@ -40,15 +40,12 @@ uint8_t filter_index2 = 0;
  * data[4]
  *    b0 - XTD
  *    b1 - RTR
- *
  *    b2 - ESI
  *    b3 - BRS
  *    b4 - FDF
  *    b4 - ANMF
- * data[5] - FIDX
- * data[6:7] - RXTS
- * data[8] - DLC
- * data[9:9+DLC] - data
+ * data[5] - DLC
+ * data[6:6+DLC] - data
  */
 bool socketcan_rx_can_cb(void* conn, void *msg, packet_t *packet) {
   (void)conn;
@@ -65,13 +62,10 @@ bool socketcan_rx_can_cb(void* conn, void *msg, packet_t *packet) {
   }
   packet->data[4] = (rxmsg->common.XTD) | (rxmsg->common.RTR << 1) | (rxmsg->common.ESI << 2)
                   | (rxmsg->BRS << 3) | (rxmsg->FDF << 4) | (rxmsg->ANMF << 5);
-  packet->data[5] = rxmsg->FIDX;
-  packet->data[6] = rxmsg->RXTS & 0xFF;
-  packet->data[7] = (rxmsg->RXTS >> 8) & 0xFF;
-  packet->data[8] = rxmsg->DLC;
-  memcpy(packet->data + 9, rxmsg->data8, can_fd_dlc2len(rxmsg->DLC));
+  packet->data[5] = rxmsg->DLC;
+  memcpy(packet->data + 6, rxmsg->data8, can_fd_dlc2len(rxmsg->DLC));
   packet->cmd_code = cmd_socketcan_rx_hscan;
-  packet->data_len = 73;
+  packet->data_len = 6 + can_fd_dlc2len(rxmsg->DLC);
   return true;
 }
 
@@ -92,7 +86,7 @@ bool socketcan_rx_swcan_cb(void* conn, void *msg, packet_t *packet) {
   packet->data[13] = rxmsg->common.XTD;
   packet->data[14] = rxmsg->common.RTR;
   memcpy(packet->data + 4, rxmsg->data8, rxmsg->DLC);
-  packet->cmd_code = cmd_socketcan_rx_hscan;
+  packet->cmd_code = cmd_socketcan_rx_swcan;
   packet->data_len = 15;
   return true;
 }
@@ -174,7 +168,8 @@ bool socketcan_connectSw(packet_t *rx_packet, packet_t *tx_packet) {
        canConfig2.CCCR |= FDCAN_CCCR_DAR;
      }
      canStart(&CAND2, &canConfig2);
-     canSTM32SetFilters(&CAND2, ++filter_index1, filters);
+     canSTM32SetFilters(&CAND2, filter_index1, filters);
+
      palSetLine(LINE_SWM0);
      palSetLine(LINE_SWM1);
      break;
@@ -195,18 +190,21 @@ bool socketcan_txFrameHs(packet_t *rx_packet, packet_t *tx_packet) {
     txmsg.std.SID = ((uint32_t)rx_packet->data[0] | (uint32_t)(rx_packet->data[1] << 8)
         | (uint32_t)(rx_packet->data[2] << 16)) & 0x7FF;
   }
-  txmsg.MM = rx_packet->data[5];
-  txmsg.DLC = rx_packet->data[6];
+  txmsg.DLC = rx_packet->data[5];
   txmsg.common.RTR = (flags >> 1) & 0x00000001;
   txmsg.common.ESI = (flags >> 2) & 0x00000001;
   //txmsg.BRS = (flags >> 3) & 0x00000001;
   txmsg.FDF = (flags >> 4) & 0x00000001;
   txmsg.EFC = (flags >> 5) & 0x00000001;
 
-  memcpy(txmsg.data8, rx_packet->data + 7, can_fd_dlc2len(rx_packet->data[6]));
+  memcpy(txmsg.data8, rx_packet->data + 6, can_fd_dlc2len(rx_packet->data[5]));
 
-  return (canTransmit(&CAND1, CAN_ANY_MAILBOX, &txmsg, TIME_MS2I(100)) == MSG_OK )
-      && prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+  bool status = canTransmit(&CAND1, CAN_ANY_MAILBOX, &txmsg, TIME_MS2I(100)) == MSG_OK ;
+  if (status)
+    return prepareReplyPacket(tx_packet, rx_packet, rx_packet->data+5, 1, cmd_term_ack);
+  else
+    return prepareReplyPacket(tx_packet, rx_packet, 0, 1, cmd_term_nack);
+
 }
 
 bool socketcan_txFrameSw(packet_t *rx_packet, packet_t *tx_packet) {
@@ -226,8 +224,11 @@ bool socketcan_txFrameSw(packet_t *rx_packet, packet_t *tx_packet) {
   txswmsg.common.RTR = rx_packet->data[14];
   memcpy(txswmsg.data8, rx_packet->data + 4, can_fd_dlc2len(rx_packet->data[12]));
 
-  return (canTransmit(&CAND2, CAN_ANY_MAILBOX, &txswmsg, TIME_MS2I(100)) == MSG_OK )
-      && prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+  bool status = canTransmit(&CAND2, CAN_ANY_MAILBOX, &txswmsg, TIME_MS2I(100)) == MSG_OK ;
+  if (status)
+    return prepareReplyPacket(tx_packet, rx_packet, rx_packet->data+12, 1, cmd_term_ack);
+  else
+    return prepareReplyPacket(tx_packet, rx_packet, 0, 1, cmd_term_nack);
 }
 
 bool socketcan_bitrateHs(packet_t *rx_packet, packet_t *tx_packet) {
@@ -269,6 +270,7 @@ bool socketcan_bitrateSw(packet_t *rx_packet, packet_t *tx_packet) {
   }
   return false;
 }
+
 bool socketcan_filterHs(packet_t *rx_packet, packet_t *tx_packet) {
   switch(rx_packet->data[0]) {
     case 0: //pass all
@@ -288,7 +290,6 @@ bool socketcan_filterHs(packet_t *rx_packet, packet_t *tx_packet) {
       canGlobalFilter(&canConfig1, (uint32_t)rx_packet->data[1], (uint32_t)rx_packet->data[2], (uint32_t)rx_packet->data[3], (uint32_t)rx_packet->data[4]);
     break;
     case 3: //clear can filters
-      DBG_PRNT("clear filters: can0\r\n");
       memset(&filters, 0, 10 * sizeof(CANFilter));
       filter_index1 = 0;
       canSTM32SetFilters(&CAND1, 10, filters);
@@ -319,7 +320,6 @@ bool socketcan_filterSw(packet_t *rx_packet, packet_t *tx_packet) {
       canGlobalFilter(&canConfig2, (uint32_t)rx_packet->data[1], (uint32_t)rx_packet->data[2], (uint32_t)rx_packet->data[3], (uint32_t)rx_packet->data[4]);
     break;
     case 3: //clear can filters
-      DBG_PRNT("clear filters: can1\r\n");
       memset(&filters2, 0, 10 * sizeof(CANFilter));
       filter_index2 = 0;
       canSTM32SetFilters(&CAND2, 10, filters2);

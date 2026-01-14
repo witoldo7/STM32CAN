@@ -32,7 +32,7 @@ __attribute__((__section__(".ram1"))) __attribute__((aligned (32))) static uint8
 static packet_t rx_packet = {.data = rxdata};
 static packet_t tx_packet = {.data = txdata};
 
-#define MB_SIZE 16
+#define MB_SIZE 32
 static msg_t mb_buffer[MB_SIZE];
 static mailbox_t usbTxMb;
 /*
@@ -441,7 +441,6 @@ THD_FUNCTION(usbThd_tx, arg) {
   while (TRUE) {
     if (chMBFetchTimeout(&usbTxMb, &msg, TIME_MS2I(500)) == MSG_OK) {
       usb_packet *packet = (usb_packet *)msg;
-      //DBG_PRNT("fetchMB len %d, cmd %x\r\n", packet->size, packet->data[0]);
       usb_send(packet);
       chHeapFree(packet);
     }

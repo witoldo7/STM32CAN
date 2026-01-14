@@ -114,7 +114,7 @@ bool exec_cmd_can(packet_t *rx_packet, packet_t *tx_packet) {
           | (uint32_t)rx_packet->data[2] << 8;
       bool ret = canBaudRate(&canConfig1, bitrate, NULL, NULL);
       return ret && prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
-    return prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
+    return false;
 
   case cmd_can_txframe:
     if (rx_packet->data_len != 15) {

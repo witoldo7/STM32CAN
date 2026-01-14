@@ -161,10 +161,8 @@ struct wqcan_priv
  *    b3 - BRS
  *    b4 - FDF
  *    b4 - ANMF
- * data[5] - FIDX
- * data[6:7] - RXTS
- * data[8] - DLC
- * data[9:9+DLC] - data
+ * data[5] - DLC
+ * data[6:6+DLC] - data
  */
 struct __packed wqcan_usb_msg_can_rx
 {
@@ -172,8 +170,6 @@ struct __packed wqcan_usb_msg_can_rx
 	u16 len;
 	u8 SID[4];
 	u8 CFG;
-	u8 FIDX;
-	u16 RXTS;
 	u8 DLC;
 	u8 data[64];
 	u8 term;
@@ -188,9 +184,8 @@ struct __packed wqcan_usb_msg_can_rx
  *    b3 - BPS
  *    b4 - FDF
  *    b5 - EFC
- * data[5] - MM
- * data[6] - DLC
- * data[7:7+DLC] - data
+ * data[5] - DLC
+ * data[6:6+DLC] - data
  */
 struct __packed wqcan_usb_msg_can_tx
 {
@@ -198,7 +193,6 @@ struct __packed wqcan_usb_msg_can_tx
 	u16 len;
 	u8 SID[4];
 	u8 CFG;
-	u8 MM;
 	u8 DLC;
 	u8 data[64];
 	u8 term;
@@ -232,6 +226,7 @@ struct __packed wqcan_usb_msg_swcan_tx
 struct __packed wqcan_usb_msg
 {
 	u8 cmd_id;
+	u16 len;
 	u8 unused[80];
 };
 
@@ -248,6 +243,7 @@ struct __packed wqcan_usb_msg_ack
 {
 	u8 cmd_id;
 	u16 len;
+	u8 dlc;
 	u8 term;
 };
 
@@ -504,14 +500,6 @@ static void wqcan_usb_write_bulk_callback(struct urb *urb)
 	usb_free_coherent(urb->dev, urb->transfer_buffer_length,
 					  urb->transfer_buffer, urb->transfer_dma);
 
-	if (ctx->can)
-	{
-		if (!netif_device_present(netdev))
-			return;
-
-		netdev->stats.tx_bytes += can_get_echo_skb(netdev, ctx->ndx, NULL);
-	}
-
 	if (urb->status)
 		netdev_info(netdev, "Tx URB aborted (%d)\n", urb->status);
 
@@ -522,12 +510,13 @@ static void wqcan_usb_write_bulk_callback(struct urb *urb)
 /* Send data to device */
 static netdev_tx_t wqcan_usb_xmit(struct wqcan_priv *priv,
 								  struct wqcan_usb_msg *usb_msg,
-								  struct wqcan_usb_ctx *ctx, u16 size)
+								  struct wqcan_usb_ctx *ctx)
 {
 	struct urb *urb;
 	u8 *buf;
+	const u16 size = 4 + usb_msg->len;
+	put_unaligned_be16(usb_msg->len, &usb_msg->len);
 	int err;
-
 	/* create a URB, and a buffer for it, and copy the data to the URB */
 	urb = usb_alloc_urb(0, GFP_ATOMIC);
 	if (!urb)
@@ -638,13 +627,13 @@ static netdev_tx_t wqcan_usb_start_xmit(struct sk_buff *skb,
 	usb_msg.CFG = flags;
 	usb_msg.DLC = can_fd_len2dlc(cf->len);
 	memcpy(usb_msg.data, cf->data, cf->len);
-	put_unaligned_be16(sizeof(usb_msg) - 4, &usb_msg.len);
+	usb_msg.len = 6 + cf->len;
 
-	can_put_echo_skb(skb, priv->netdev, ctx->ndx, 0);
-
-	err = wqcan_usb_xmit(priv, (struct wqcan_usb_msg *)&usb_msg, ctx, sizeof(usb_msg));
+	err = wqcan_usb_xmit(priv, (struct wqcan_usb_msg *)&usb_msg, ctx);
 	if (err)
 		goto xmit_failed;
+
+	can_put_echo_skb(skb, priv->netdev, ctx->ndx, 0);
 
 	return NETDEV_TX_OK;
 
@@ -703,11 +692,11 @@ static netdev_tx_t wqcan_usb_start_xmit_sw(struct sk_buff *skb,
 
 	usb_msg.DLC = can_fd_len2dlc(cf->len);
 	memcpy(usb_msg.data, cf->data, cf->len);
-	put_unaligned_be16(15, &usb_msg.len);
+	usb_msg.len = 15;
 
 	can_put_echo_skb(skb, priv->netdev, ctx->ndx, 0);
 
-	err = wqcan_usb_xmit(priv, (struct wqcan_usb_msg *)&usb_msg, ctx, sizeof(usb_msg));
+	err = wqcan_usb_xmit(priv, (struct wqcan_usb_msg *)&usb_msg, ctx);
 	if (err)
 		goto xmit_failed;
 
@@ -724,7 +713,7 @@ xmit_failed:
 
 /* Send cmd to device */
 static void wqcan_usb_xmit_cmd(struct wqcan_priv *priv,
-							   struct wqcan_usb_msg *usb_msg, u16 size)
+							   struct wqcan_usb_msg *usb_msg)
 {
 	struct wqcan_usb_ctx *ctx = NULL;
 	int err;
@@ -735,11 +724,10 @@ static void wqcan_usb_xmit_cmd(struct wqcan_priv *priv,
 		netdev_err(priv->netdev,
 				   "Lack of free ctx. Sending (%d) cmd aborted",
 				   usb_msg->cmd_id);
-
 		return;
 	}
 
-	err = wqcan_usb_xmit(priv, usb_msg, ctx, size);
+	err = wqcan_usb_xmit(priv, usb_msg, ctx);
 	if (err)
 		netdev_err(priv->netdev, "Failed to send cmd (%d)",
 				   usb_msg->cmd_id);
@@ -749,39 +737,37 @@ static void wqcan_usb_xmit_change_bitrate(struct wqcan_priv *priv, u8 cmd, u32 r
 {
 	struct wqcan_usb_msg_can_bitrate usb_msg = {
 		.cmd_id = WQCAN_CMD_CAN_BIT_RATE,
+		.len = 5,
 		.cmd = cmd,
 		.term = 0};
 	if (cmd == 2)
 	{
-		put_unaligned_be16(9, &usb_msg.len);
+		usb_msg.len = 9;
 		put_unaligned_be32(reg_tdcr, &usb_msg.reg1);
-	}
-	else
-	{
-		put_unaligned_be16(5, &usb_msg.len);
 	}
 
 	put_unaligned_be32(reg_btp, &usb_msg.reg0);
 
-	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
+	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg);
 }
 
 static void wqcan_usb_xmit_change_bitrate_sw(struct wqcan_priv *priv, u32 bitrate)
 {
 	struct wqcan_usb_msg_swcan_bitrate usb_msg = {
 		.cmd_id = WQCAN_CMD_SWCAN_BIT_RATE,
+		.len = 4,
 		.term = 0};
-	put_unaligned_be16(4, &usb_msg.len);
 
 	put_unaligned_be32(bitrate, &usb_msg.bitrate);
 
-	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
+	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg);
 }
 
 static void wqcan_usb_xmit_change_filter(struct wqcan_priv *priv, can_filter *filter, u8 idx)
 {
 	struct wqcan_usb_msg_can_filter usb_msg = {
 		.cmd_id = priv->isHsCan ? WQCAN_CMD_CAN_FILTER : WQCAN_CMD_SWCAN_FILTER,
+		.len = 13,
 		.sub_cmd = 1,
 		.idx = idx,
 		.type = filter->filter_type,
@@ -791,36 +777,34 @@ static void wqcan_usb_xmit_change_filter(struct wqcan_priv *priv, can_filter *fi
 
 	put_unaligned_le32(filter->id1, &usb_msg.id1);
 	put_unaligned_le32(filter->id2, &usb_msg.id2);
-	put_unaligned_be16(13, &usb_msg.len);
-
-	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
+	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg);
 }
 
 static void wqcan_usb_xmit_change_filter_clear(struct wqcan_priv *priv)
 {
 	struct wqcan_usb_msg_can_filter usb_msg = {
 		.cmd_id = priv->isHsCan ? WQCAN_CMD_CAN_FILTER : WQCAN_CMD_SWCAN_FILTER,
+		.len = 1,
 		.sub_cmd = 3,
 		.term = 0
 		};
-	put_unaligned_be16(13, &usb_msg.len);
 
-	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
+	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg);
 }
 
 static void wqcan_usb_xmit_change_filter_gfc(struct wqcan_priv *priv, can_gfc *gfc)
 {
 	struct wqcan_usb_msg_can_filter_gfc usb_msg = {
 		.cmd_id = priv->isHsCan ? WQCAN_CMD_CAN_FILTER : WQCAN_CMD_SWCAN_FILTER,
+		.len = 5,
 		.sub_cmd = 2,
 		.nmstd = gfc->non_matching_std,
 		.nmext = gfc->non_matching_ext,
 		.rrstd = gfc->reject_remote_std,
 		.rrext = gfc->reject_remote_ext,
 		.term = 0};
-	put_unaligned_be16(5, &usb_msg.len);
 
-	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
+	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg);
 }
 
 static void wqcan_usb_xmit_read_fw_ver(struct wqcan_priv *priv)
@@ -830,53 +814,30 @@ static void wqcan_usb_xmit_read_fw_ver(struct wqcan_priv *priv)
 		.len = 0,
 		.term = 0};
 
-	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
+	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg);
 }
 
 static void wqcan_usb_can_open(struct wqcan_priv *priv, u8 cmd)
 {
 	u32 mode = priv->can.ctrlmode;
 	struct wqcan_usb_msg_can_open usb_msg = {
-		.cmd_id = WQCAN_CMD_CAN_OPEN,
+		.cmd_id = priv->isHsCan ? WQCAN_CMD_CAN_OPEN : WQCAN_CMD_SWCAN_OPEN,
+		.len = 5,
 		.data = cmd,
 		.term = 0};
-	put_unaligned_be16(5, &usb_msg.len);
 	put_unaligned_be32(mode, &usb_msg.mode);
 
-	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
-}
-
-static void wqcan_usb_can_open_sw(struct wqcan_priv *priv)
-{
-	u32 mode = priv->can.ctrlmode;
-	struct wqcan_usb_msg_can_open usb_msg = {
-		.cmd_id = WQCAN_CMD_SWCAN_OPEN,
-		.data = 1,
-		.term = 0};
-	put_unaligned_be16(5, &usb_msg.len);
-	put_unaligned_be32(mode, &usb_msg.mode);
-
-	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
+	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg);
 }
 
 static void wqcan_usb_can_close(struct wqcan_priv *priv)
 {
 	struct wqcan_usb_msg_can_open usb_msg = {
-		.cmd_id = WQCAN_CMD_CAN_OPEN,
+		.cmd_id = priv->isHsCan ? WQCAN_CMD_CAN_OPEN : WQCAN_CMD_SWCAN_OPEN,
+		.len = 1,
 		.data = 0,
 		.term = 0};
-	put_unaligned_be16(1, &usb_msg.len);
-	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
-}
-
-static void wqcan_usb_swcan_close(struct wqcan_priv *priv)
-{
-	struct wqcan_usb_msg_can_open usb_msg = {
-		.cmd_id = WQCAN_CMD_SWCAN_OPEN,
-		.data = 0,
-		.term = 0};
-	put_unaligned_be16(1, &usb_msg.len);
-	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
+	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg);
 }
 
 static void wqcan_usb_process_can(struct wqcan_priv *priv,
@@ -994,9 +955,14 @@ static void wqcan_usb_can_tx_ack(struct wqcan_priv *priv, struct wqcan_usb_msg_a
 		return;
 
 	if (msg->term == WQCAN_CMD_ACK)
+	{
+		stats->tx_bytes += msg->dlc;
 		stats->tx_packets++;
+	}
 	else
+	{
 		stats->tx_dropped++;
+	}
 }
 
 static void wqcan_usb_process_rx(struct wqcan_dev_priv *priv,
@@ -1189,7 +1155,7 @@ static int wqcan_usb_open_sw(struct net_device *netdev)
 {
 	struct wqcan_priv *priv = netdev_priv(netdev);
 	int err;
-	wqcan_usb_can_open_sw(priv);
+	wqcan_usb_can_open(priv, 1);
 
 	/* common open */
 	err = open_candev(netdev);
@@ -1230,7 +1196,7 @@ static int wqcan_usb_close(struct net_device *netdev)
 static int wqcan_usb_close_sw(struct net_device *netdev)
 {
 	struct wqcan_priv *priv = netdev_priv(netdev);
-	wqcan_usb_swcan_close(priv);
+	wqcan_usb_can_close(priv);
 	priv->can.state = CAN_STATE_STOPPED;
 
 	netif_stop_queue(netdev);
