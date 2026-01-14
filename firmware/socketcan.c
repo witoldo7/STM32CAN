@@ -10,6 +10,7 @@
 #include "string.h"
 #include "utils.h"
 #include "canutils.h"
+#include "debug.h"
 
 CANConfig canConfig1 = {
   OPMODE_CAN,//OPMODE_FDCAN,       /* OP MODE */
@@ -32,7 +33,9 @@ CANConfig canConfig2 = {
 };
 
 CANFilter filters[10] = {0};
-uint8_t filter_size = 0;
+uint8_t filter_index1 = 0;
+CANFilter filters2[10] = {0};
+uint8_t filter_index2 = 0;
 /* data[0:3] - SID or EID
  * data[4]
  *    b0 - XTD
@@ -136,7 +139,7 @@ bool socketcan_connectHs(packet_t *rx_packet, packet_t *tx_packet) {
       canConfig1.CCCR |= FDCAN_CCCR_DAR;
     }
     canStart(&CAND1, &canConfig1);
-    canSTM32SetFilters(&CAND1, filter_size, filters);
+    canSTM32SetFilters(&CAND1, filter_index1, filters);
     break;
  default:
    return false;
@@ -171,7 +174,7 @@ bool socketcan_connectSw(packet_t *rx_packet, packet_t *tx_packet) {
        canConfig2.CCCR |= FDCAN_CCCR_DAR;
      }
      canStart(&CAND2, &canConfig2);
-
+     canSTM32SetFilters(&CAND2, ++filter_index1, filters);
      palSetLine(LINE_SWM0);
      palSetLine(LINE_SWM1);
      break;
@@ -279,10 +282,16 @@ bool socketcan_filterHs(packet_t *rx_packet, packet_t *tx_packet) {
       memcpy(&filter.identifier2, rx_packet->data+9, 4);
       uint8_t idx = rx_packet->data[1];
       filters[idx] = filter;
-      canSTM32SetFilters(&CAND1, ++filter_size, filters);
+      canSTM32SetFilters(&CAND1, ++filter_index1, filters);
     break;
     case 2: //gfc
       canGlobalFilter(&canConfig1, (uint32_t)rx_packet->data[1], (uint32_t)rx_packet->data[2], (uint32_t)rx_packet->data[3], (uint32_t)rx_packet->data[4]);
+    break;
+    case 3: //clear can filters
+      DBG_PRNT("clear filters: can0\r\n");
+      memset(&filters, 0, 10 * sizeof(CANFilter));
+      filter_index1 = 0;
+      canSTM32SetFilters(&CAND1, 10, filters);
     break;
     default:
       return false;
@@ -292,13 +301,33 @@ bool socketcan_filterHs(packet_t *rx_packet, packet_t *tx_packet) {
 }
 
 bool socketcan_filterSw(packet_t *rx_packet, packet_t *tx_packet) {
-  if (rx_packet->data_len != 0)  {
-    if ((rx_packet->data_len == 1) && (rx_packet->data[0] == 0)) {
+ switch(rx_packet->data[0]) {
+    case 0: //pass all
       canStop(&CAND2);
       canGlobalFilter(&canConfig2, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
-      canStart(&CAND2, &canConfig2);;
-    }
+      canStart(&CAND2, &canConfig2);
+    break;
+    case 1: //set filter
+      CANFilter filter = {.filter_type = rx_packet->data[2], .filter_mode = rx_packet->data[3], .filter_cfg = rx_packet->data[4]};
+      memcpy(&filter.identifier1, rx_packet->data+5, 4);
+      memcpy(&filter.identifier2, rx_packet->data+9, 4);
+      uint8_t idx = rx_packet->data[1];
+      filters2[idx] = filter;
+      canSTM32SetFilters(&CAND2, ++filter_index2, filters2);
+    break;
+    case 2: //gfc
+      canGlobalFilter(&canConfig2, (uint32_t)rx_packet->data[1], (uint32_t)rx_packet->data[2], (uint32_t)rx_packet->data[3], (uint32_t)rx_packet->data[4]);
+    break;
+    case 3: //clear can filters
+      DBG_PRNT("clear filters: can1\r\n");
+      memset(&filters2, 0, 10 * sizeof(CANFilter));
+      filter_index2 = 0;
+      canSTM32SetFilters(&CAND2, 10, filters2);
+    break;
+    default:
+      return false;
   }
+
   return prepareReplyPacket(tx_packet, rx_packet, 0, 0, cmd_term_ack);
 }
 

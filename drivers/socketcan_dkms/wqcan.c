@@ -146,6 +146,7 @@ struct wqcan_priv
 	struct can_berr_counter bec;
 	atomic_t free_ctx_cnt;
 	struct wqcan_dev_priv *priv_dev;
+	bool isHsCan;
 	can_filter filters[10];
 	int filter_size;
 	can_gfc gfc;
@@ -282,6 +283,14 @@ struct __packed wqcan_usb_msg_can_filter
 	u8 term;
 };
 
+struct __packed wqcan_usb_msg_can_filter_clear
+{
+	u8 cmd_id;
+	u16 len;
+	u8 sub_cmd;
+	u8 term;
+};
+
 struct __packed wqcan_usb_msg_can_filter_gfc
 {
 	u8 cmd_id;
@@ -315,6 +324,7 @@ static const struct usb_device_id wqcan_usb_table[] = {
 	{} /* Terminating entry */
 };
 static void wqcan_usb_xmit_change_filter(struct wqcan_priv *priv, can_filter *filter, u8 idx);
+static void wqcan_usb_xmit_change_filter_clear(struct wqcan_priv *priv);
 static void wqcan_usb_xmit_change_filter_gfc(struct wqcan_priv *priv, can_gfc *gfc);
 
 static ssize_t show_filter(struct device *dev, struct device_attribute *devattr, char *buf)
@@ -338,15 +348,25 @@ static ssize_t store_filter(struct device *dev, struct device_attribute *devattr
 {
 	struct wqcan_priv *priv = netdev_priv(to_net_dev(dev));
 	int idx = -1;
-
+	u8 clear_filters = 0;
 	can_filter f = {0};
-	int ret = sscanf(buf, "id1=%x id2=%x type=%hhu mode=%hhu cfg=%hhu idx=%d",
+
+	int ret = sscanf(buf, "clear=%hhu", &clear_filters);
+	if(ret == 1 && clear_filters == 1)
+	{
+		wqcan_usb_xmit_change_filter_clear(priv);
+		return count;
+	}
+
+	ret = sscanf(buf, "id1=%x id2=%x type=%hhu mode=%hhu cfg=%hhu idx=%d",
 					 &f.id1, &f.id2, &f.filter_type, &f.filter_mode, &f.filter_cfg, &idx);
 	if (ret < 5)
 	{
 		dev_err(dev, "Invalid filter\n");
 		pr_err("usage:id1=ID1h id2=ID2h type=0..1 mode=0..2 cfg=1..3 idx=0..9\n");
 		pr_err("usage:id1=ID1h id2=ID2h type=0..1 mode=0..2 cfg=1..3\n");
+		pr_err("usage:clear=1\n");
+
 		return -EINVAL;
 	}
 
@@ -385,7 +405,8 @@ static ssize_t store_gfc_cfg(struct device *dev, struct device_attribute *devatt
 	can_gfc g;
 	ssize_t ret;
 
-	ret = sscanf(buf, "nms=%hhu nme=%hhu rrs=%hhu rre=%hhu", &g.non_matching_std, &g.non_matching_ext, &g.reject_remote_std, &g.reject_remote_ext);
+	ret = sscanf(buf, "nms=%hhu nme=%hhu rrs=%hhu rre=%hhu",
+				 &g.non_matching_std, &g.non_matching_ext, &g.reject_remote_std, &g.reject_remote_ext);
 	if (ret < 4)
 	{
 		dev_err(dev, "Invalid Global filter\n");
@@ -760,7 +781,7 @@ static void wqcan_usb_xmit_change_bitrate_sw(struct wqcan_priv *priv, u32 bitrat
 static void wqcan_usb_xmit_change_filter(struct wqcan_priv *priv, can_filter *filter, u8 idx)
 {
 	struct wqcan_usb_msg_can_filter usb_msg = {
-		.cmd_id = WQCAN_CMD_CAN_FILTER,
+		.cmd_id = priv->isHsCan ? WQCAN_CMD_CAN_FILTER : WQCAN_CMD_SWCAN_FILTER,
 		.sub_cmd = 1,
 		.idx = idx,
 		.type = filter->filter_type,
@@ -775,10 +796,22 @@ static void wqcan_usb_xmit_change_filter(struct wqcan_priv *priv, can_filter *fi
 	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
 }
 
+static void wqcan_usb_xmit_change_filter_clear(struct wqcan_priv *priv)
+{
+	struct wqcan_usb_msg_can_filter usb_msg = {
+		.cmd_id = priv->isHsCan ? WQCAN_CMD_CAN_FILTER : WQCAN_CMD_SWCAN_FILTER,
+		.sub_cmd = 3,
+		.term = 0
+		};
+	put_unaligned_be16(13, &usb_msg.len);
+
+	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
+}
+
 static void wqcan_usb_xmit_change_filter_gfc(struct wqcan_priv *priv, can_gfc *gfc)
 {
 	struct wqcan_usb_msg_can_filter_gfc usb_msg = {
-		.cmd_id = WQCAN_CMD_CAN_FILTER,
+		.cmd_id = priv->isHsCan ? WQCAN_CMD_CAN_FILTER : WQCAN_CMD_SWCAN_FILTER,
 		.sub_cmd = 2,
 		.nmstd = gfc->non_matching_std,
 		.nmext = gfc->non_matching_ext,
@@ -786,18 +819,6 @@ static void wqcan_usb_xmit_change_filter_gfc(struct wqcan_priv *priv, can_gfc *g
 		.rrext = gfc->reject_remote_ext,
 		.term = 0};
 	put_unaligned_be16(5, &usb_msg.len);
-
-	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
-}
-
-static void wqcan_usb_xmit_change_filter_sw(struct wqcan_priv *priv)
-{
-	struct wqcan_usb_msg_can_filter usb_msg = {
-		.cmd_id = WQCAN_CMD_SWCAN_FILTER,
-		.term = 0};
-	put_unaligned_be16(1, &usb_msg.len);
-
-	// put_unaligned_be32(0, &usb_msg.filter);
 
 	wqcan_usb_xmit_cmd(priv, (struct wqcan_usb_msg *)&usb_msg, sizeof(usb_msg));
 }
@@ -986,8 +1007,6 @@ static void wqcan_usb_process_rx(struct wqcan_dev_priv *priv,
 	case WQCAN_CMD_READ_FW_VERSION:
 		wqcan_usb_process_ka_usb(priv->interfaces[0],
 								 (struct wqcan_usb_msg_ka_usb *)msg);
-		wqcan_usb_process_ka_usb(priv->interfaces[1],
-								 (struct wqcan_usb_msg_ka_usb *)msg);
 		break;
 
 	case WQCAN_CMD_CAN_RECEIVE_MESSAGE:
@@ -1153,7 +1172,6 @@ static int wqcan_usb_open(struct net_device *netdev)
 	struct wqcan_priv *priv = netdev_priv(netdev);
 	int err;
 	wqcan_usb_can_open(priv, 2);
-	// wqcan_usb_xmit_change_filter(priv);
 
 	/* common open */
 	err = open_candev(netdev);
@@ -1172,7 +1190,6 @@ static int wqcan_usb_open_sw(struct net_device *netdev)
 	struct wqcan_priv *priv = netdev_priv(netdev);
 	int err;
 	wqcan_usb_can_open_sw(priv);
-	// wqcan_usb_xmit_change_filter_sw(priv);
 
 	/* common open */
 	err = open_candev(netdev);
@@ -1415,6 +1432,7 @@ static int wqcan_usb_probe(struct usb_interface *intf,
 	priv->can.fd.do_set_data_bittiming = wqcan_net_set_data_bittiming;
 	priv->can.clock.freq = 80000000;
 	priv->can.ctrlmode_supported = CAN_CTRLMODE_LOOPBACK | CAN_CTRLMODE_LISTENONLY | CAN_CTRLMODE_FD | CAN_CTRLMODE_BERR_REPORTING | CAN_CTRLMODE_FD_NON_ISO | CAN_CTRLMODE_ONE_SHOT | CAN_CTRLMODE_TDC_AUTO;
+	priv->isHsCan = true;
 
 	netdev->netdev_ops = &wqcan_netdev_ops;
 	netdev->ethtool_ops = &wqcan_ethtool_ops;
@@ -1446,7 +1464,7 @@ static int wqcan_usb_probe(struct usb_interface *intf,
 	priv1->can.bitrate_const_cnt = ARRAY_SIZE(wqcan_bitrate);
 	priv1->can.do_set_bittiming = wqcan_net_set_bittiming_sw;
 	priv1->can.ctrlmode_supported = CAN_CTRLMODE_LOOPBACK | CAN_CTRLMODE_ONE_SHOT | CAN_CTRLMODE_LISTENONLY;
-
+	priv1->isHsCan = false;
 	netdev1->flags |= IFF_ECHO; /* we support local echo */
 	netdev1->netdev_ops = &wqcan_netdev_ops_sw;
 
